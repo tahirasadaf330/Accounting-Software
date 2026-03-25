@@ -1,0 +1,12 @@
+import { Module } from '@nestjs/common';
+import { VouchersService } from './vouchers.service';
+import { VouchersController } from './vouchers.controller';
+import { JournalEntriesModule } from '../journal-entries/journal-entries.module';
+
+@Module({
+  imports: [JournalEntriesModule],
+  controllers: [VouchersController],
+  providers: [VouchersService],
+  exports: [VouchersService],
+})
+export class VouchersModule {}

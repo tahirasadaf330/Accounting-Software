@@ -1,0 +1,739 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  CHIEF_ACCOUNTANT
+  ACCOUNTANT
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_SETUP
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  INVITED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  COGS
+  EXPENSE
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum VoucherType {
+  PAYMENT
+  RECEIPT
+  JOURNAL
+  CONTRA
+  SALES
+  PURCHASE
+  CREDIT_NOTE
+  DEBIT_NOTE
+}
+
+enum VoucherStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  POSTED
+  REVERSED
+}
+
+enum ContactType {
+  CUSTOMER
+  VENDOR
+  BOTH
+}
+
+enum ReconciliationStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum MatchType {
+  EXACT_AMOUNT_DATE
+  EXACT_AMOUNT_NEAR_DATE
+  EXACT_AMOUNT
+  MANUAL
+}
+
+enum NotificationType {
+  VOUCHER_SUBMITTED
+  VOUCHER_APPROVED
+  VOUCHER_REJECTED
+  VOUCHER_REVERSED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+// ============================================================
+// MULTI-TENANCY & AUTH
+// ============================================================
+
+model Tenant {
+  id                  String       @id @default(uuid())
+  name                String
+  slug                String       @unique
+  baseCurrency        String       @default("USD") @db.VarChar(3)
+  fiscalYearStartMonth Int         @default(1)
+  timezone            String       @default("UTC")
+  locale              String       @default("en-US")
+  status              TenantStatus @default(PENDING_SETUP)
+
+  // Company profile
+  address             String?
+  city                String?      @db.VarChar(100)
+  state               String?      @db.VarChar(100)
+  postalCode          String?      @db.VarChar(20)
+  country             String?      @db.VarChar(100)
+  phone               String?      @db.VarChar(50)
+  email               String?      @db.VarChar(255)
+  website             String?      @db.VarChar(255)
+  taxId               String?      @db.VarChar(100)
+  registrationNumber  String?      @db.VarChar(100)
+
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  // Relations
+  users               User[]
+  invitations         Invitation[]
+  accounts            Account[]
+  vouchers            Voucher[]
+  voucherLineItems    VoucherLineItem[]
+  journalEntries      JournalEntry[]
+  journalEntryLines   JournalEntryLine[]
+  fiscalYears         FiscalYear[]
+  fiscalPeriods       FiscalPeriod[]
+  exchangeRates       ExchangeRate[]
+  bankAccounts        BankAccount[]
+  bankStatements      BankStatement[]
+  bankStatementLines  BankStatementLine[]
+  reconciliations     Reconciliation[]
+  reconciliationMatches ReconciliationMatch[]
+  contacts            Contact[]
+  accountBalances     AccountBalance[]
+  auditLogs           AuditLog[]
+  voucherAttachments  VoucherAttachment[]
+  notifications       Notification[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  tenantId     String?
+  email        String     @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         Role
+  mfaSecret    String?
+  mfaEnabled   Boolean    @default(false)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  // Relations
+  tenant               Tenant?              @relation(fields: [tenantId], references: [id])
+  refreshTokens        RefreshToken[]
+  passwordResetTokens  PasswordResetToken[]
+  sentInvitations      Invitation[]         @relation("InvitedByUser")
+  createdVouchers      Voucher[]            @relation("VoucherCreatedBy")
+  approvedVouchers Voucher[]     @relation("VoucherApprovedBy")
+  reconciliations Reconciliation[] @relation("ReconciledBy")
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+
+  @@index([tenantId])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Invitation {
+  id          String           @id @default(uuid())
+  tenantId    String
+  email       String
+  firstName   String
+  lastName    String
+  role        Role
+  invitedById String
+  token       String           @unique
+  expiresAt   DateTime
+  status      InvitationStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+
+  // Relations
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  invitedBy User   @relation("InvitedByUser", fields: [invitedById], references: [id])
+
+  @@index([token])
+  @@index([tenantId])
+  @@index([email])
+  @@map("invitations")
+}
+
+// ============================================================
+// CHART OF ACCOUNTS
+// ============================================================
+
+model Account {
+  id            String        @id @default(uuid())
+  tenantId      String
+  code          String        @db.VarChar(20)
+  name          String        @db.VarChar(255)
+  accountType   AccountType
+  parentId      String?
+  level         Int           @db.SmallInt
+  normalBalance NormalBalance
+  isActive      Boolean       @default(true)
+  isSystem      Boolean       @default(false)
+  description   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
+  parent             Account?            @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children           Account[]           @relation("AccountHierarchy")
+  voucherLineItems   VoucherLineItem[]
+  journalEntryLines  JournalEntryLine[]
+  accountBalances    AccountBalance[]
+  bankAccounts       BankAccount[]
+  contacts           Contact[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, accountType])
+  @@index([tenantId, parentId])
+  @@index([tenantId, level])
+  @@map("accounts")
+}
+
+model AccountTemplate {
+  id          String  @id @default(uuid())
+  industry    String  @db.VarChar(100)
+  name        String  @db.VarChar(255)
+  description String? @db.VarChar(500)
+  accounts    Json
+
+  @@unique([industry])
+  @@map("account_templates")
+}
+
+// ============================================================
+// FISCAL YEAR & PERIODS
+// ============================================================
+
+model FiscalYear {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String   @db.VarChar(100)
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  periods         FiscalPeriod[]
+  accountBalances AccountBalance[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("fiscal_years")
+}
+
+model FiscalPeriod {
+  id           String   @id @default(uuid())
+  fiscalYearId String
+  tenantId     String
+  name         String   @db.VarChar(100)
+  startDate    DateTime @db.Date
+  endDate      DateTime @db.Date
+  periodNumber Int      @db.SmallInt
+  isClosed     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  fiscalYear      FiscalYear      @relation(fields: [fiscalYearId], references: [id])
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  accountBalances AccountBalance[]
+
+  @@unique([tenantId, fiscalYearId, periodNumber])
+  @@index([tenantId])
+  @@index([tenantId, startDate, endDate])
+  @@map("fiscal_periods")
+}
+
+// ============================================================
+// VOUCHER & LEDGER
+// ============================================================
+
+model Voucher {
+  id              String        @id @default(uuid())
+  tenantId        String
+  voucherNumber   String        @db.VarChar(50)
+  voucherType     VoucherType
+  status          VoucherStatus @default(DRAFT)
+  date            DateTime      @db.Date
+  periodStart     DateTime?     @db.Date
+  periodEnd       DateTime?     @db.Date
+  narration       String
+  reference       String?       @db.VarChar(255)
+  totalAmount     Decimal       @db.Decimal(20, 4)
+  currencyCode    String        @default("USD") @db.VarChar(3)
+  exchangeRate    Decimal       @default(1) @db.Decimal(18, 8)
+  createdById     String
+  approvedById    String?
+  postedAt        DateTime?
+  rejectionReason String?
+  reversedFromId  String?
+  contactId       String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  tenant       Tenant              @relation(fields: [tenantId], references: [id])
+  createdBy    User                @relation("VoucherCreatedBy", fields: [createdById], references: [id])
+  approvedBy   User?               @relation("VoucherApprovedBy", fields: [approvedById], references: [id])
+  reversedFrom Voucher?            @relation("VoucherReversal", fields: [reversedFromId], references: [id])
+  reversals    Voucher[]           @relation("VoucherReversal")
+  contact      Contact?            @relation(fields: [contactId], references: [id])
+  lineItems    VoucherLineItem[]
+  journalEntry JournalEntry?
+  attachments  VoucherAttachment[]
+
+  @@unique([tenantId, voucherNumber])
+  @@index([tenantId])
+  @@index([tenantId, voucherType])
+  @@index([tenantId, status])
+  @@index([tenantId, date])
+  @@index([tenantId, contactId])
+  @@map("vouchers")
+}
+
+model VoucherLineItem {
+  id           String  @id @default(uuid())
+  voucherId    String
+  tenantId     String
+  accountId    String
+  debit        Decimal @default(0) @db.Decimal(20, 4)
+  credit       Decimal @default(0) @db.Decimal(20, 4)
+  currencyCode String  @default("USD") @db.VarChar(3)
+  exchangeRate Decimal @default(1) @db.Decimal(18, 8)
+  baseDebit    Decimal @default(0) @db.Decimal(20, 4)
+  baseCredit   Decimal @default(0) @db.Decimal(20, 4)
+  narration    String?
+  costCenter   String? @db.VarChar(50)
+  lineOrder    Int     @default(0) @db.SmallInt
+  createdAt    DateTime @default(now())
+
+  // Relations
+  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@index([voucherId])
+  @@index([tenantId])
+  @@index([tenantId, accountId])
+  @@map("voucher_line_items")
+}
+
+model VoucherAttachment {
+  id        String   @id @default(uuid())
+  voucherId String
+  tenantId  String
+  fileName  String   @db.VarChar(500)
+  filePath  String
+  fileSize  Int
+  mimeType  String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+
+  // Relations
+  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+
+  @@index([voucherId])
+  @@index([tenantId])
+  @@map("voucher_attachments")
+}
+
+model JournalEntry {
+  id              String   @id @default(uuid())
+  tenantId        String
+  voucherId       String   @unique
+  entryNumber     String   @db.VarChar(50)
+  entryDate       DateTime @db.Date
+  narration       String
+  isReversing     Boolean  @default(false)
+  reversedEntryId String?
+  createdAt       DateTime @default(now())
+
+  // Relations
+  tenant        Tenant             @relation(fields: [tenantId], references: [id])
+  voucher       Voucher            @relation(fields: [voucherId], references: [id])
+  reversedEntry JournalEntry?      @relation("JournalEntryReversal", fields: [reversedEntryId], references: [id])
+  reversals     JournalEntry[]     @relation("JournalEntryReversal")
+  lines         JournalEntryLine[]
+
+  @@index([tenantId])
+  @@index([tenantId, entryDate])
+  @@map("journal_entries")
+}
+
+model JournalEntryLine {
+  id                  String  @id @default(uuid())
+  journalEntryId      String
+  tenantId            String
+  accountId           String
+  debit               Decimal @default(0) @db.Decimal(20, 4)
+  credit              Decimal @default(0) @db.Decimal(20, 4)
+  baseCurrencyDebit   Decimal @default(0) @db.Decimal(20, 4)
+  baseCurrencyCredit  Decimal @default(0) @db.Decimal(20, 4)
+  currencyCode        String  @default("USD") @db.VarChar(3)
+  exchangeRate        Decimal @default(1) @db.Decimal(18, 8)
+  narration           String?
+  lineOrder           Int     @default(0) @db.SmallInt
+  createdAt           DateTime @default(now())
+
+  // Relations
+  journalEntry         JournalEntry          @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id])
+  account              Account               @relation(fields: [accountId], references: [id])
+  reconciliationMatches ReconciliationMatch[]
+
+  @@index([journalEntryId])
+  @@index([tenantId])
+  @@index([tenantId, accountId])
+  @@index([tenantId, accountId, createdAt])
+  @@map("journal_entry_lines")
+}
+
+// ============================================================
+// MULTI-CURRENCY
+// ============================================================
+
+model Currency {
+  id            String  @id @default(uuid())
+  code          String  @unique @db.VarChar(3)
+  name          String  @db.VarChar(100)
+  symbol        String  @db.VarChar(10)
+  decimalPlaces Int     @default(2) @db.SmallInt
+  isActive      Boolean @default(true)
+
+  @@map("currencies")
+}
+
+model ExchangeRate {
+  id             String   @id @default(uuid())
+  tenantId       String
+  baseCurrency   String   @db.VarChar(3)
+  targetCurrency String   @db.VarChar(3)
+  rate           Decimal  @db.Decimal(18, 8)
+  effectiveDate  DateTime @db.Date
+  createdAt      DateTime @default(now())
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, baseCurrency, targetCurrency, effectiveDate])
+  @@index([tenantId])
+  @@index([tenantId, baseCurrency, targetCurrency])
+  @@map("exchange_rates")
+}
+
+// ============================================================
+// BANK RECONCILIATION
+// ============================================================
+
+model BankAccount {
+  id            String   @id @default(uuid())
+  tenantId      String
+  accountId     String
+  bankName      String   @db.VarChar(255)
+  accountNumber String   @db.VarChar(50)
+  currency      String   @default("USD") @db.VarChar(3)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  account         Account         @relation(fields: [accountId], references: [id])
+  statements      BankStatement[]
+  reconciliations Reconciliation[]
+
+  @@unique([tenantId, accountId])
+  @@index([tenantId])
+  @@map("bank_accounts")
+}
+
+model BankStatement {
+  id              String   @id @default(uuid())
+  tenantId        String
+  bankAccountId   String
+  statementDate   DateTime @db.Date
+  openingBalance  Decimal  @db.Decimal(20, 4)
+  closingBalance  Decimal  @db.Decimal(20, 4)
+  fileName        String   @db.VarChar(500)
+  totalEntries    Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  // Relations
+  tenant      Tenant              @relation(fields: [tenantId], references: [id])
+  bankAccount BankAccount         @relation(fields: [bankAccountId], references: [id])
+  lines       BankStatementLine[]
+
+  @@index([tenantId])
+  @@index([tenantId, bankAccountId])
+  @@map("bank_statements")
+}
+
+model BankStatementLine {
+  id              String   @id @default(uuid())
+  bankStatementId String
+  tenantId        String
+  date            DateTime @db.Date
+  description     String
+  reference       String?  @db.VarChar(255)
+  debit           Decimal  @default(0) @db.Decimal(20, 4)
+  credit          Decimal  @default(0) @db.Decimal(20, 4)
+  balance         Decimal  @default(0) @db.Decimal(20, 4)
+  createdAt       DateTime @default(now())
+
+  // Relations
+  bankStatement        BankStatement         @relation(fields: [bankStatementId], references: [id], onDelete: Cascade)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id])
+  reconciliationMatches ReconciliationMatch[]
+
+  @@index([bankStatementId])
+  @@index([tenantId])
+  @@map("bank_statement_lines")
+}
+
+model Reconciliation {
+  id              String               @id @default(uuid())
+  tenantId        String
+  bankAccountId   String
+  periodStart     DateTime             @db.Date
+  periodEnd       DateTime             @db.Date
+  status          ReconciliationStatus @default(IN_PROGRESS)
+  reconciledById  String?
+  reconciledAt    DateTime?
+  notes           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  // Relations
+  tenant       Tenant                @relation(fields: [tenantId], references: [id])
+  bankAccount  BankAccount           @relation(fields: [bankAccountId], references: [id])
+  reconciledBy User?                 @relation("ReconciledBy", fields: [reconciledById], references: [id])
+  matches      ReconciliationMatch[]
+
+  @@index([tenantId])
+  @@index([tenantId, bankAccountId])
+  @@map("reconciliations")
+}
+
+model ReconciliationMatch {
+  id                  String    @id @default(uuid())
+  reconciliationId    String
+  tenantId            String
+  bankStatementLineId String
+  journalEntryLineId  String
+  matchType           MatchType
+  createdAt           DateTime  @default(now())
+
+  // Relations
+  reconciliation    Reconciliation    @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
+  bankStatementLine BankStatementLine @relation(fields: [bankStatementLineId], references: [id])
+  journalEntryLine  JournalEntryLine  @relation(fields: [journalEntryLineId], references: [id])
+
+  @@unique([reconciliationId, bankStatementLineId])
+  @@unique([reconciliationId, journalEntryLineId])
+  @@index([tenantId])
+  @@map("reconciliation_matches")
+}
+
+// ============================================================
+// CONTACTS (Customers & Vendors)
+// ============================================================
+
+model Contact {
+  id              String      @id @default(uuid())
+  tenantId        String
+  type            ContactType
+  name            String      @db.VarChar(255)
+  email           String?     @db.VarChar(255)
+  phone           String?     @db.VarChar(50)
+  address         String?
+  city            String?     @db.VarChar(100)
+  state           String?     @db.VarChar(100)
+  country         String?     @db.VarChar(100)
+  postalCode      String?     @db.VarChar(20)
+  taxId           String?     @db.VarChar(50)
+  creditLimit     Decimal?    @db.Decimal(20, 4)
+  paymentTermDays Int?        @db.SmallInt
+  currencyCode    String      @default("USD") @db.VarChar(3)
+  isActive        Boolean     @default(true)
+  accountId       String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  account  Account? @relation(fields: [accountId], references: [id])
+  vouchers Voucher[]
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@index([tenantId, name])
+  @@index([tenantId, accountId])
+  @@map("contacts")
+}
+
+// ============================================================
+// ACCOUNT BALANCE (Materialized for performance)
+// ============================================================
+
+model AccountBalance {
+  id                  String  @id @default(uuid())
+  tenantId            String
+  accountId           String
+  fiscalYearId        String
+  fiscalPeriodId      String?
+  debitBalance        Decimal @default(0) @db.Decimal(20, 4)
+  creditBalance       Decimal @default(0) @db.Decimal(20, 4)
+  netBalance          Decimal @default(0) @db.Decimal(20, 4)
+  baseCurrencyBalance Decimal @default(0) @db.Decimal(20, 4)
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  account      Account      @relation(fields: [accountId], references: [id])
+  fiscalYear   FiscalYear   @relation(fields: [fiscalYearId], references: [id])
+  fiscalPeriod FiscalPeriod? @relation(fields: [fiscalPeriodId], references: [id])
+
+  @@unique([tenantId, accountId, fiscalYearId, fiscalPeriodId])
+  @@index([tenantId])
+  @@index([tenantId, accountId])
+  @@index([tenantId, fiscalYearId])
+  @@map("account_balances")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+model Notification {
+  id            String           @id @default(uuid())
+  tenantId      String
+  userId        String
+  type          NotificationType
+  title         String           @db.VarChar(255)
+  message       String           @db.VarChar(1000)
+  referenceId   String?          @db.VarChar(255)
+  referenceType String?          @db.VarChar(100)
+  isRead        Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, userId, isRead])
+  @@index([tenantId, userId, createdAt])
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String?
+  userId     String?
+  action     String   @db.VarChar(100)
+  entityType String   @db.VarChar(100)
+  entityId   String   @db.VarChar(255)
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?  @db.VarChar(45)
+  userAgent  String?
+  timestamp  DateTime @default(now())
+
+  // Relations
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, timestamp])
+  @@map("audit_logs")
+}

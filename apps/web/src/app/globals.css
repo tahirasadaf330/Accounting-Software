@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+}
+
+@media print {
+  nav,
+  aside,
+  header,
+  [data-sidebar],
+  [data-topbar],
+  [data-action-buttons] {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}

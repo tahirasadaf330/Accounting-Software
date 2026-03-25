@@ -1,0 +1,10 @@
+export enum Role {
+  SUPER_ADMIN = 'SUPER_ADMIN',
+  OWNER = 'OWNER',
+  CHIEF_ACCOUNTANT = 'CHIEF_ACCOUNTANT',
+  ACCOUNTANT = 'ACCOUNTANT',
+}
+
+export const TENANT_ROLES = [Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT] as const;
+
+export const APPROVAL_ROLES = [Role.OWNER, Role.CHIEF_ACCOUNTANT] as const;
