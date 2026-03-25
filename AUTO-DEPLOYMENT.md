@@ -120,8 +120,11 @@ echo "========================================"
 
 # Step 1: Checkout latest code to work-tree
 echo ""
-echo "--- [1/5] Checking out latest code ---"
+echo "--- [1/8] Checking out latest code ---"
 git --git-dir="$GIT_DIR" --work-tree="$WORK_TREE" checkout -f main
+
+# Ensure deploy user owns everything (guards against any root-created files)
+sudo chown -R deploy:deploy "$WORK_TREE"
 
 cd "$WORK_TREE"
 
@@ -137,8 +140,9 @@ pnpm prisma:generate
 
 # Step 4: Clean and build shared package (dist/ is gitignored, must be rebuilt fresh each deploy)
 echo ""
-echo "--- [4/7] Building shared package ---"
+echo "--- [4/8] Building shared package ---"
 rm -rf "$WORK_TREE/packages/shared/dist"
+rm -f "$WORK_TREE/packages/shared/tsconfig.tsbuildinfo"
 pnpm --filter @accounting-saas/shared build
 
 # Step 5: Build api (depends on shared dist/)
