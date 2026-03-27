@@ -12,6 +12,7 @@
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:prod": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed/seed.ts",
     "prisma:studio": "prisma studio",
     "prisma:generate": "prisma generate"

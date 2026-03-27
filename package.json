@@ -9,6 +9,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "prisma:migrate": "pnpm --filter api prisma:migrate",
+    "prisma:migrate:prod": "pnpm --filter api prisma:migrate:prod",
     "prisma:seed": "pnpm --filter api prisma:seed",
     "prisma:studio": "pnpm --filter api prisma:studio",
     "prisma:generate": "pnpm --filter api prisma:generate"

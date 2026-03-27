@@ -155,10 +155,10 @@ echo ""
 echo "--- [6/7] Building web ---"
 pnpm --filter web build
 
-# Step 7: Run database migrations
+# Step 7: Run database migrations (deploy = apply pending migrations, no shadow DB required)
 echo ""
 echo "--- [7/7] Running database migrations ---"
-pnpm prisma:migrate
+pnpm prisma:migrate:prod
 
 # Step 8: Restart services
 echo ""
