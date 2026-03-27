@@ -3,12 +3,13 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { Plus, FileText, ChevronDown, ShoppingCart, Receipt } from 'lucide-react';
+import { Plus, FileText, ChevronDown, ShoppingCart, Receipt, Search } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 interface Voucher {
   id: string;
   voucherNumber: string;
+  reference?: string;
   voucherType: string;
   status: string;
   date: string;
@@ -43,6 +44,7 @@ export default function VouchersPage() {
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [search, setSearch] = useState('');
   const [createDropdownOpen, setCreateDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -76,6 +78,22 @@ export default function VouchersPage() {
   const formatDate = (d: string) => new Date(d).toLocaleDateString();
   const formatAmount = (amount: string, currency: string) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(amount));
+
+  const filteredVouchers = search.trim()
+    ? vouchers.filter((v) => {
+        const q = search.toLowerCase();
+        return (
+          v.voucherNumber.toLowerCase().includes(q) ||
+          (v.reference ?? '').toLowerCase().includes(q) ||
+          formatDate(v.date).toLowerCase().includes(q) ||
+          (typeLabels[v.voucherType] ?? v.voucherType).toLowerCase().includes(q) ||
+          (v.narration ?? '').toLowerCase().includes(q) ||
+          formatAmount(v.totalAmount, v.currencyCode).toLowerCase().includes(q) ||
+          v.status.toLowerCase().includes(q) ||
+          v.currencyCode.toLowerCase().includes(q)
+        );
+      })
+    : vouchers;
 
   return (
     <div>
@@ -130,21 +148,33 @@ export default function VouchersPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {['', 'DRAFT', 'PENDING_APPROVAL', 'POSTED', 'REVERSED'].map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={cn(
-              'rounded-lg px-3 py-1.5 text-sm font-medium',
-              statusFilter === s
-                ? 'bg-primary-100 text-primary-700'
-                : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50',
-            )}
-          >
-            {s || 'All'}
-          </button>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap gap-2">
+          {['', 'DRAFT', 'PENDING_APPROVAL', 'POSTED', 'REVERSED'].map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={cn(
+                'rounded-lg px-3 py-1.5 text-sm font-medium',
+                statusFilter === s
+                  ? 'bg-primary-100 text-primary-700'
+                  : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50',
+              )}
+            >
+              {s || 'All'}
+            </button>
+          ))}
+        </div>
+        <div className="relative ml-auto">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search vouchers..."
+            className="h-9 w-64 rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          />
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
@@ -152,16 +182,17 @@ export default function VouchersPage() {
           <div className="flex items-center justify-center p-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
           </div>
-        ) : vouchers.length === 0 ? (
+        ) : filteredVouchers.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-gray-500">
             <FileText className="mb-4 h-12 w-12 text-gray-300" />
-            <p className="text-sm">No vouchers found</p>
+            <p className="text-sm">{search ? 'No vouchers match your search' : 'No vouchers found'}</p>
           </div>
         ) : (
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Number</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Reference</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Type</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Narration</th>
@@ -170,7 +201,7 @@ export default function VouchersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {vouchers.map((v) => (
+              {filteredVouchers.map((v) => (
                 <tr key={v.id} className="hover:bg-gray-50">
                   <td className="whitespace-nowrap px-4 py-3 text-sm font-mono">
                     <button
@@ -180,6 +211,7 @@ export default function VouchersPage() {
                       {v.voucherNumber}
                     </button>
                   </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{v.reference || '—'}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{formatDate(v.date)}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
                     {typeLabels[v.voucherType] || v.voucherType}

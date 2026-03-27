@@ -3,9 +3,11 @@
   "collection": "@nestjs/schematics",
   "sourceRoot": "src",
   "compilerOptions": {
+    "webpack": true,
+    "tsConfigPath": "tsconfig.build.json",
     "deleteOutDir": true,
     "assets": [
-      { "include": "modules/mail/templates/**/*.hbs", "outDir": "dist/src", "watchAssets": true }
+      { "include": "modules/mail/templates/**/*.hbs", "outDir": "dist", "watchAssets": true }
     ],
     "watchAssets": true
   }

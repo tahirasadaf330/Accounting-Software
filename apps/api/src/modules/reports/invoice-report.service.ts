@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { VoucherType } from '@prisma/client';
+import { VoucherType, VoucherStatus } from '@prisma/client';
 import { InvoiceReportQueryDto } from './dto/invoice-report-query.dto';
 
 const ROW_CAP = 5000;
@@ -17,6 +17,7 @@ export class InvoiceReportService {
     const where: any = {
       tenantId,
       voucherType: { in: types },
+      status: { not: VoucherStatus.REVERSED },
     };
 
     if (filters.dateFrom || filters.dateTo) {
