@@ -4,7 +4,7 @@ module.exports = {
       name: 'accounting-api',
       cwd: '/var/www/accounting/apps/api',
       script: 'node',
-      args: 'dist/apps/api/src/main.js',
+      args: 'dist/main.js',
       instances: 1,
       autorestart: true,
       watch: false,
