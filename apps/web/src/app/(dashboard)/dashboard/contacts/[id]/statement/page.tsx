@@ -7,6 +7,8 @@ import { ArrowLeft, Printer, Download } from 'lucide-react';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
 
+type BalanceNature = 'Receivable' | 'Payable' | 'Settled';
+
 interface StatementLine {
   date: string;
   voucherNumber: string;
@@ -14,6 +16,7 @@ interface StatementLine {
   debit: string;
   credit: string;
   runningBalance: string;
+  balanceNature: BalanceNature;
 }
 
 interface ContactStatement {
@@ -27,8 +30,11 @@ interface ContactStatement {
   periodEnd: string;
   currency: string;
   openingBalance: string;
+  openingBalanceNature: BalanceNature;
   lines: StatementLine[];
   closingBalance: string;
+  closingBalanceNature: BalanceNature;
+  closingDueDate: string | null;
   totalDebit: string;
   totalCredit: string;
 }
@@ -72,6 +78,18 @@ export default function ContactStatementPage() {
   }, [contactId]);
 
   const formatAmount = (amount: string | number) => formatCurrency(amount, baseCurrency);
+
+  const natureColor = (nature: BalanceNature) => {
+    if (nature === 'Receivable') return 'text-green-700 bg-green-50 ring-green-600/20';
+    if (nature === 'Payable') return 'text-red-700 bg-red-50 ring-red-600/20';
+    return 'text-gray-500 bg-gray-50 ring-gray-500/20';
+  };
+
+  const NatureBadge = ({ nature }: { nature: BalanceNature }) => (
+    <span className={`ml-2 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${natureColor(nature)}`}>
+      {nature}
+    </span>
+  );
 
   const handlePrint = useCallback(() => {
     const node = printRef.current;
@@ -270,7 +288,19 @@ export default function ContactStatementPage() {
                     <td style={{ padding: '6px 8px' }} colSpan={3}><strong>Closing Balance</strong></td>
                     <td style={{ padding: '6px 8px', textAlign: 'right' }}><strong>{formatAmount(statement.totalDebit)}</strong></td>
                     <td style={{ padding: '6px 8px', textAlign: 'right' }}><strong>{formatAmount(statement.totalCredit)}</strong></td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right' }}><strong>{formatAmount(statement.closingBalance)}</strong></td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                      <div>
+                        <strong>{formatAmount(statement.closingBalance)}</strong>
+                        <span style={{ marginLeft: '6px', fontSize: '10px', color: statement.closingBalanceNature === 'Receivable' ? '#15803d' : statement.closingBalanceNature === 'Payable' ? '#b91c1c' : '#6b7280' }}>
+                          {statement.closingBalanceNature}
+                        </span>
+                      </div>
+                      {statement.closingDueDate && (
+                        <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>
+                          Due: {statement.closingDueDate}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -338,7 +368,15 @@ export default function ContactStatementPage() {
                     {formatAmount(statement.totalCredit)}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">
-                    {formatAmount(statement.closingBalance)}
+                    <div>
+                      {formatAmount(statement.closingBalance)}
+                      <NatureBadge nature={statement.closingBalanceNature} />
+                    </div>
+                    {statement.closingDueDate && (
+                      <div className="mt-1 text-xs font-normal text-gray-500">
+                        Due: {statement.closingDueDate}
+                      </div>
+                    )}
                   </td>
                 </tr>
               </tfoot>

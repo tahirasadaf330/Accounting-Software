@@ -624,7 +624,21 @@ export default function ReportsPage() {
                     <td colSpan={3} className="px-4 py-3 text-sm">Closing Balance</td>
                     <td className="px-4 py-3 text-right text-sm">{formatAmount(reportData.totalDebit)}</td>
                     <td className="px-4 py-3 text-right text-sm">{formatAmount(reportData.totalCredit)}</td>
-                    <td className="px-4 py-3 text-right text-sm">{formatAmount(reportData.closingBalance)}</td>
+                    <td className="px-4 py-3 text-right text-sm">
+                      <div>
+                        {formatAmount(reportData.closingBalance)}
+                        {reportData.closingBalanceNature && (
+                          <span className={`ml-2 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${reportData.closingBalanceNature === 'Receivable' ? 'text-green-700 bg-green-50 ring-green-600/20' : reportData.closingBalanceNature === 'Payable' ? 'text-red-700 bg-red-50 ring-red-600/20' : 'text-gray-500 bg-gray-50 ring-gray-500/20'}`}>
+                            {reportData.closingBalanceNature}
+                          </span>
+                        )}
+                      </div>
+                      {reportData.closingDueDate && (
+                        <div className="mt-1 text-xs font-normal text-gray-500">
+                          Due: {reportData.closingDueDate}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 </tfoot>
               </table>

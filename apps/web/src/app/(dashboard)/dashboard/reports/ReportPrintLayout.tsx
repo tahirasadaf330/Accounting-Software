@@ -391,7 +391,21 @@ const ReportPrintLayout = React.forwardRef<HTMLDivElement, ReportPrintLayoutProp
                 <td colSpan={3} style={{ ...tdStyle, fontWeight: 700 }}>Closing Balance</td>
                 <td style={{ ...tdRightStyle, fontWeight: 700 }}>{fmt(reportData?.totalDebit || 0)}</td>
                 <td style={{ ...tdRightStyle, fontWeight: 700 }}>{fmt(reportData?.totalCredit || 0)}</td>
-                <td style={{ ...tdRightStyle, fontWeight: 700 }}>{fmt(reportData?.closingBalance || 0)}</td>
+                <td style={{ ...tdRightStyle, fontWeight: 700 }}>
+                  <div>
+                    {fmt(reportData?.closingBalance || 0)}
+                    {reportData?.closingBalanceNature && (
+                      <span style={{ marginLeft: '6px', fontSize: '10px', color: reportData.closingBalanceNature === 'Receivable' ? '#15803d' : reportData.closingBalanceNature === 'Payable' ? '#b91c1c' : '#6b7280' }}>
+                        {reportData.closingBalanceNature}
+                      </span>
+                    )}
+                  </div>
+                  {reportData?.closingDueDate && (
+                    <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px', fontWeight: 400 }}>
+                      Due: {reportData.closingDueDate}
+                    </div>
+                  )}
+                </td>
               </tr>
             </tfoot>
           </table>
