@@ -28,6 +28,8 @@ interface Contact {
   accountId: string | null;
   accountCode: string | null;
   accountName: string | null;
+  inHouseManagers: { id: string; name: string; email: string }[];
+  partnerManagers: { id: string; name: string; email: string }[];
   createdAt: string;
 }
 

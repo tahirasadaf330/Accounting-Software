@@ -18,6 +18,7 @@ import {
   Calendar,
   Users,
   UserCircle,
+  UserCog,
   Settings,
   LogOut,
   Menu,
@@ -39,6 +40,7 @@ const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Chart of Accounts', href: '/dashboard/accounts', icon: BookOpen },
   { name: 'Contacts', href: '/dashboard/contacts', icon: UserCircle },
+  { name: 'Account Managers', href: '/dashboard/account-managers', icon: UserCog },
   {
     name: 'Vouchers',
     href: '/dashboard/vouchers',

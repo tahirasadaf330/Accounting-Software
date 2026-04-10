@@ -167,7 +167,7 @@ export default function InvoiceLineItems({
 
   return (
     <div className="space-y-3">
-      <div className="overflow-hidden rounded-lg border border-gray-200">
+      <div className="overflow-visible rounded-lg border border-gray-200">
         <table className="w-full">
           <thead>
             <tr className="bg-gray-50">

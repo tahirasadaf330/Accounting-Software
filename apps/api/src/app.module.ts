@@ -15,6 +15,7 @@ import { FiscalYearModule } from './modules/fiscal-year/fiscal-year.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { MailModule } from './modules/mail/mail.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
+import { AccountManagersModule } from './modules/account-managers/account-managers.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { ContactsModule } from './modules/contacts/contacts.module';
     FiscalYearModule,
     NotificationsModule,
     ContactsModule,
+    AccountManagersModule,
   ],
 })
 export class AppModule {}

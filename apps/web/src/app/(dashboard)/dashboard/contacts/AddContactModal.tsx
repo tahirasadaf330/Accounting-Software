@@ -2,8 +2,80 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
-import { X } from 'lucide-react';
+import { X, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/cn';
+
+function MultiSelectDropdown({
+  label,
+  options,
+  selectedIds,
+  onChange,
+}: {
+  label: string;
+  options: { id: string; name: string; email: string }[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedNames = options
+    .filter((o) => selectedIds.includes(o.id))
+    .map((o) => o.name);
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between rounded-lg border border-gray-300 px-3 py-2 text-left text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+      >
+        {selectedNames.length > 0 ? (
+          <span className="truncate text-gray-900">{selectedNames.join(', ')}</span>
+        ) : (
+          <span className="text-gray-400">Select {label.toLowerCase()}</span>
+        )}
+        <ChevronDown className={cn('h-4 w-4 shrink-0 text-gray-400 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+          {options.length === 0 ? (
+            <div className="p-3 text-center text-sm text-gray-500">No managers available</div>
+          ) : (
+            options.map((am) => (
+              <label
+                key={am.id}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(am.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) onChange([...selectedIds, am.id]);
+                    else onChange(selectedIds.filter((id) => id !== am.id));
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600"
+                />
+                <span className="font-medium">{am.name}</span>
+                <span className="text-gray-400">—</span>
+                <span className="truncate text-gray-500">{am.email}</span>
+              </label>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Account {
   id: string;
@@ -33,6 +105,9 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
   const [taxId, setTaxId] = useState('');
   const [creditLimit, setCreditLimit] = useState('');
   const [paymentTermDays, setPaymentTermDays] = useState('');
+  const [inHouseManagerIds, setInHouseManagerIds] = useState<string[]>([]);
+  const [partnerManagerIds, setPartnerManagerIds] = useState<string[]>([]);
+  const [accountManagers, setAccountManagers] = useState<{ id: string; name: string; email: string; managerType: string }[]>([]);
   const [autoCreateAccount, setAutoCreateAccount] = useState(true);
   const [accountId, setAccountId] = useState('');
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -54,12 +129,15 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       setTaxId('');
       setCreditLimit('');
       setPaymentTermDays('');
+      setInHouseManagerIds([]);
+      setPartnerManagerIds([]);
       setAutoCreateAccount(true);
       setAccountId('');
       setError('');
       setFieldErrors({});
       setSubmitting(false);
       loadAccounts();
+      loadAccountManagers();
     }
   }, [open]);
 
@@ -79,6 +157,15 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       setAccounts(list.filter((a: Account) => a.accountType === 'ASSET'));
     } catch {
       setAccounts([]);
+    }
+  };
+
+  const loadAccountManagers = async () => {
+    try {
+      const data = await api.get<any[]>('/account-managers', { isActive: true });
+      setAccountManagers(data);
+    } catch {
+      setAccountManagers([]);
     }
   };
 
@@ -127,6 +214,8 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       if (creditLimit.trim()) body.creditLimit = Number(creditLimit);
       if (paymentTermDays.trim()) body.paymentTermDays = parseInt(paymentTermDays, 10);
       if (!autoCreateAccount && accountId) body.accountId = accountId;
+      if (inHouseManagerIds.length > 0) body.inHouseManagerIds = inHouseManagerIds;
+      if (partnerManagerIds.length > 0) body.partnerManagerIds = partnerManagerIds;
 
       await api.post('/contacts', body);
       onSuccess();
@@ -344,6 +433,20 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                   {fieldErrors.paymentTermDays && <p className="mt-1 text-xs text-red-600">{fieldErrors.paymentTermDays}</p>}
                 </div>
               </div>
+
+              <MultiSelectDropdown
+                label="In-House Manager(s)"
+                options={accountManagers.filter((am) => am.managerType === 'IN_HOUSE')}
+                selectedIds={inHouseManagerIds}
+                onChange={setInHouseManagerIds}
+              />
+
+              <MultiSelectDropdown
+                label="Partner Manager(s)"
+                options={accountManagers.filter((am) => am.managerType === 'PARTNER')}
+                selectedIds={partnerManagerIds}
+                onChange={setPartnerManagerIds}
+              />
 
               {/* Account Link */}
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">

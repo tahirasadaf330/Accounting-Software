@@ -141,6 +141,7 @@ model Tenant {
   reconciliations     Reconciliation[]
   reconciliationMatches ReconciliationMatch[]
   contacts            Contact[]
+  accountManagers     AccountManager[]
   accountBalances     AccountBalance[]
   auditLogs           AuditLog[]
   voucherAttachments  VoucherAttachment[]
@@ -645,15 +646,61 @@ model Contact {
   updatedAt       DateTime    @updatedAt
 
   // Relations
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  account  Account? @relation(fields: [accountId], references: [id])
-  vouchers Voucher[]
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id])
+  account         Account?               @relation(fields: [accountId], references: [id])
+  accountManagers ContactAccountManager[]
+  vouchers        Voucher[]
 
   @@index([tenantId])
   @@index([tenantId, type])
   @@index([tenantId, name])
   @@index([tenantId, accountId])
   @@map("contacts")
+}
+
+// ============================================================
+// Account Manager
+// ============================================================
+
+enum ManagerType {
+  IN_HOUSE
+  PARTNER
+}
+
+model AccountManager {
+  id          String      @id @default(uuid())
+  tenantId    String
+  name        String      @db.VarChar(255)
+  email       String      @db.VarChar(255)
+  managerType ManagerType @default(IN_HOUSE)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id])
+  contacts ContactAccountManager[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, managerType])
+  @@map("account_managers")
+}
+
+model ContactAccountManager {
+  id               String         @id @default(uuid())
+  contactId        String
+  accountManagerId String
+  createdAt        DateTime       @default(now())
+
+  // Relations
+  contact        Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  accountManager AccountManager @relation(fields: [accountManagerId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, accountManagerId])
+  @@index([contactId])
+  @@index([accountManagerId])
+  @@map("contact_account_managers")
 }
 
 // ============================================================

@@ -5,6 +5,7 @@ import {
   IsEmail,
   IsNumber,
   IsInt,
+  IsUUID,
   MaxLength,
   Min,
   Max,
@@ -88,4 +89,14 @@ export class UpdateContactDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ description: 'In-House manager IDs', type: [String] })
+  @IsOptional()
+  @IsUUID('4', { each: true })
+  inHouseManagerIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Partner manager IDs', type: [String] })
+  @IsOptional()
+  @IsUUID('4', { each: true })
+  partnerManagerIds?: string[];
 }

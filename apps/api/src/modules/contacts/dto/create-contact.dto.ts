@@ -98,6 +98,16 @@ export class CreateContactDto {
   @IsUUID()
   accountId?: string;
 
+  @ApiPropertyOptional({ description: 'In-House manager IDs', type: [String] })
+  @IsOptional()
+  @IsUUID('4', { each: true })
+  inHouseManagerIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Partner manager IDs', type: [String] })
+  @IsOptional()
+  @IsUUID('4', { each: true })
+  partnerManagerIds?: string[];
+
   @ApiPropertyOptional({ example: true, description: 'Auto-create a trade account (default: true)' })
   @IsOptional()
   @IsBoolean()
