@@ -16,6 +16,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { MailModule } from './modules/mail/mail.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
 import { AccountManagersModule } from './modules/account-managers/account-managers.module';
+import { PaymentAllocationsModule } from './modules/payment-allocations/payment-allocations.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AccountManagersModule } from './modules/account-managers/account-manage
     NotificationsModule,
     ContactsModule,
     AccountManagersModule,
+    PaymentAllocationsModule,
   ],
 })
 export class AppModule {}

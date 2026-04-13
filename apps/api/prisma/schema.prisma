@@ -142,8 +142,9 @@ model Tenant {
   reconciliationMatches ReconciliationMatch[]
   contacts            Contact[]
   accountManagers     AccountManager[]
-  accountBalances     AccountBalance[]
-  auditLogs           AuditLog[]
+  accountBalances      AccountBalance[]
+  paymentAllocations   PaymentAllocation[]
+  auditLogs            AuditLog[]
   voucherAttachments  VoucherAttachment[]
   notifications       Notification[]
 
@@ -363,9 +364,11 @@ model Voucher {
   reversedFrom Voucher?            @relation("VoucherReversal", fields: [reversedFromId], references: [id])
   reversals    Voucher[]           @relation("VoucherReversal")
   contact      Contact?            @relation(fields: [contactId], references: [id])
-  lineItems    VoucherLineItem[]
-  journalEntry JournalEntry?
-  attachments  VoucherAttachment[]
+  lineItems              VoucherLineItem[]
+  journalEntry           JournalEntry?
+  attachments            VoucherAttachment[]
+  paymentAllocations     PaymentAllocation[] @relation("PaymentVoucher")
+  invoiceAllocations     PaymentAllocation[] @relation("InvoiceVoucher")
 
   @@unique([tenantId, voucherNumber])
   @@index([tenantId])
@@ -783,4 +786,28 @@ model AuditLog {
   @@index([tenantId, entityType, entityId])
   @@index([tenantId, timestamp])
   @@map("audit_logs")
+}
+
+// ============================================================
+// Payment Allocation (links payments to invoices)
+// ============================================================
+
+model PaymentAllocation {
+  id               String   @id @default(uuid())
+  tenantId         String
+  paymentVoucherId String
+  invoiceVoucherId String
+  amount           Decimal  @db.Decimal(20, 4)
+  paidAt           DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  // Relations
+  tenant         Tenant  @relation(fields: [tenantId], references: [id])
+  paymentVoucher Voucher @relation("PaymentVoucher", fields: [paymentVoucherId], references: [id])
+  invoiceVoucher Voucher @relation("InvoiceVoucher", fields: [invoiceVoucherId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, paymentVoucherId])
+  @@index([tenantId, invoiceVoucherId])
+  @@map("payment_allocations")
 }

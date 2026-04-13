@@ -70,12 +70,24 @@ interface VoucherDetail {
   reference: string | null;
   totalAmount: string;
   currencyCode: string;
+  contactId?: string | null;
   createdBy?: { firstName: string; lastName: string };
   approvedBy?: { firstName: string; lastName: string } | null;
   rejectionReason?: string | null;
   createdAt: string;
   lineItems: LineItem[];
   attachments?: Attachment[];
+}
+
+interface UnpaidInvoice {
+  id: string;
+  voucherNumber: string;
+  voucherType: string;
+  totalAmount: string;
+  date: string;
+  totalPaid: string;
+  remaining: string;
+  status: string;
 }
 
 function formatFileSize(bytes: number): string {
@@ -511,7 +523,68 @@ function VoucherView({
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showReverseConfirm, setShowReverseConfirm] = useState(false);
+  const [showAllocateModal, setShowAllocateModal] = useState(false);
+  const [unpaidInvoices, setUnpaidInvoices] = useState<UnpaidInvoice[]>([]);
+  const [allocAmounts, setAllocAmounts] = useState<Record<string, string>>({});
+  const [allocDates, setAllocDates] = useState<Record<string, string>>({});
+  const [allocSaving, setAllocSaving] = useState(false);
+  const [allocError, setAllocError] = useState('');
+  const [existingAllocTotal, setExistingAllocTotal] = useState(0);
   const [rejectReason, setRejectReason] = useState('');
+
+  const loadUnpaidInvoices = async () => {
+    if (!voucher.contactId) return;
+    try {
+      const data = await api.get<UnpaidInvoice[]>(`/payment-allocations/unpaid-invoices/${voucher.contactId}`, { paymentType: voucher.voucherType });
+      setUnpaidInvoices(data);
+      const amounts: Record<string, string> = {};
+      const dates: Record<string, string> = {};
+      const now = new Date().toISOString().slice(0, 16);
+      data.forEach((inv) => { amounts[inv.id] = ''; dates[inv.id] = now; });
+      setAllocAmounts(amounts);
+      setAllocDates(dates);
+      setAllocError('');
+      // Load existing allocations for this payment
+      const existing = await api.get<any[]>(`/payment-allocations/payment/${voucher.id}`);
+      const total = existing.reduce((s: number, a: any) => s + parseFloat(a.amount), 0);
+      setExistingAllocTotal(total);
+    } catch { /* ignore */ }
+  };
+
+  const handleAllocateOpen = () => {
+    loadUnpaidInvoices();
+    setShowAllocateModal(true);
+  };
+
+  const handleAllocateSave = async () => {
+    setAllocSaving(true);
+    setAllocError('');
+    try {
+      const allocations = Object.entries(allocAmounts)
+        .filter(([, v]) => v && parseFloat(v) > 0)
+        .map(([invoiceVoucherId, amount]) => ({
+          invoiceVoucherId,
+          amount: parseFloat(amount),
+          paidAt: allocDates[invoiceVoucherId] || new Date().toISOString(),
+        }));
+      if (allocations.length === 0) {
+        setAllocError('Enter at least one allocation amount');
+        setAllocSaving(false);
+        return;
+      }
+      await api.post(`/payment-allocations/${voucher.id}`, { allocations });
+      setShowAllocateModal(false);
+      onRefresh();
+    } catch (err: any) {
+      setAllocError(err?.message || 'Failed to save allocation');
+    }
+    setAllocSaving(false);
+  };
+
+  const allocTotal = Object.values(allocAmounts).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  const paymentAmount = parseFloat(voucher.totalAmount) || 0;
+  const availableToAllocate = paymentAmount - existingAllocTotal;
+  const allocationExceeds = allocTotal > availableToAllocate + 0.01;
 
   const handleAction = async (action: () => Promise<void>) => {
     setActionLoading(true);
@@ -686,6 +759,19 @@ function VoucherView({
               Reverse
             </button>
           )}
+
+          {/* POSTED + RECEIPT/PAYMENT: Allocate Payment */}
+          {voucher.status === 'POSTED' &&
+            (voucher.voucherType === 'RECEIPT' || voucher.voucherType === 'PAYMENT') &&
+            voucher.contactId && (
+              <button
+                onClick={handleAllocateOpen}
+                className="flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
+              >
+                <Check className="h-4 w-4" />
+                Allocate Payment
+              </button>
+            )}
         </div>
       </div>
 
@@ -972,6 +1058,125 @@ function VoucherView({
         onCancel={() => setShowReverseConfirm(false)}
         loading={actionLoading}
       />
+
+      {/* Allocate Payment Modal */}
+      {showAllocateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Allocate Payment</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              {voucher.voucherNumber} — Payment: {formatCurrency(voucher.totalAmount, voucher.currencyCode)}
+            </p>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Invoice</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Remaining</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Allocate</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
+                      {voucher.voucherType === 'RECEIPT' ? 'Received At' : 'Paid At'}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {unpaidInvoices.filter((inv) => inv.status !== 'SETTLED').length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-6 text-center text-gray-500">
+                        No unpaid invoices for this contact
+                      </td>
+                    </tr>
+                  ) : (
+                    unpaidInvoices
+                      .filter((inv) => inv.status !== 'SETTLED')
+                      .map((inv) => (
+                        <tr key={inv.id}>
+                          <td className="px-3 py-2">
+                            <div className="font-mono text-gray-700">{inv.voucherNumber}</div>
+                            <div className="text-xs text-gray-400">{inv.date}</div>
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-900">
+                            {formatCurrency(inv.totalAmount, voucher.currencyCode)}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-600">
+                            {formatCurrency(inv.remaining, voucher.currencyCode)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={allocAmounts[inv.id] || ''}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                setAllocAmounts((p) => ({ ...p, [inv.id]: val }));
+                              }}
+                              placeholder="0.00"
+                              className="w-24 rounded-md border border-gray-200 px-2 py-1 text-right text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="datetime-local"
+                              value={allocDates[inv.id] || ''}
+                              onChange={(e) => setAllocDates((p) => ({ ...p, [inv.id]: e.target.value }))}
+                              className="rounded-md border border-gray-200 px-2 py-1 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                            />
+                          </td>
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-1 border-t border-gray-200 pt-4 text-sm">
+              <div>
+                <span className="text-gray-500">Payment Total:</span>{' '}
+                <span className="font-medium">{formatCurrency(voucher.totalAmount, voucher.currencyCode)}</span>
+                {existingAllocTotal > 0 && (
+                  <>
+                    <span className="mx-2 text-gray-300">|</span>
+                    <span className="text-gray-500">Previously Allocated:</span>{' '}
+                    <span className="font-medium">{formatCurrency(existingAllocTotal.toFixed(2), voucher.currencyCode)}</span>
+                  </>
+                )}
+                <span className="mx-2 text-gray-300">|</span>
+                <span className="text-gray-500">Available:</span>{' '}
+                <span className="font-medium">{formatCurrency(availableToAllocate.toFixed(2), voucher.currencyCode)}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">New Allocation:</span>{' '}
+                <span className={cn('font-medium', allocationExceeds ? 'text-red-600' : 'text-gray-900')}>
+                  {formatCurrency(allocTotal.toFixed(2), voucher.currencyCode)}
+                </span>
+                <span className="mx-2 text-gray-300">|</span>
+                <span className="text-gray-500">Remaining After:</span>{' '}
+                <span className="font-medium">{formatCurrency((availableToAllocate - allocTotal).toFixed(2), voucher.currencyCode)}</span>
+              </div>
+            </div>
+
+            {allocError && <p className="mt-2 text-sm text-red-600">{allocError}</p>}
+
+            <div className="mt-4 flex justify-end gap-3">
+              <button
+                onClick={() => setShowAllocateModal(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAllocateSave}
+                disabled={allocSaving || allocationExceeds}
+                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {allocSaving ? 'Saving...' : 'Save Allocation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Attachment Preview */}
       <AttachmentPreviewModal

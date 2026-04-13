@@ -53,6 +53,7 @@ const navigation: NavItem[] = [
   { name: 'Journal Entries', href: '/dashboard/journal', icon: ArrowLeftRight },
   { name: 'Bank Reconciliation', href: '/dashboard/bank', icon: Landmark },
   { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+  { name: 'Netting Report', href: '/dashboard/reports/netting', icon: BarChart3 },
   { name: 'Currencies', href: '/dashboard/currencies', icon: DollarSign },
   { name: 'Fiscal Years', href: '/dashboard/fiscal-years', icon: Calendar },
   { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
