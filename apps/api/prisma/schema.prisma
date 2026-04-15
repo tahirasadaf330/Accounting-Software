@@ -141,8 +141,12 @@ model Tenant {
   reconciliations     Reconciliation[]
   reconciliationMatches ReconciliationMatch[]
   contacts            Contact[]
-  accountBalances     AccountBalance[]
-  auditLogs           AuditLog[]
+  accountManagers     AccountManager[]
+  accountBalances      AccountBalance[]
+  paymentAllocations   PaymentAllocation[]
+  nettingCycles        NettingCycle[]
+  nettingCycleComments NettingCycleComment[]
+  auditLogs            AuditLog[]
   voucherAttachments  VoucherAttachment[]
   notifications       Notification[]
 
@@ -173,6 +177,10 @@ model User {
   reconciliations Reconciliation[] @relation("ReconciledBy")
   auditLogs       AuditLog[]
   notifications   Notification[]
+  nettingCycleComments NettingCycleComment[]
+  amApprovedCycles     NettingCycle[] @relation("AMApprover")
+  ceoApprovedCycles    NettingCycle[] @relation("CEOApprover")
+  rejectedCycles       NettingCycle[] @relation("Rejector")
 
   @@index([tenantId])
   @@index([email])
@@ -362,9 +370,12 @@ model Voucher {
   reversedFrom Voucher?            @relation("VoucherReversal", fields: [reversedFromId], references: [id])
   reversals    Voucher[]           @relation("VoucherReversal")
   contact      Contact?            @relation(fields: [contactId], references: [id])
-  lineItems    VoucherLineItem[]
-  journalEntry JournalEntry?
-  attachments  VoucherAttachment[]
+  lineItems              VoucherLineItem[]
+  journalEntry           JournalEntry?
+  attachments            VoucherAttachment[]
+  paymentAllocations     PaymentAllocation[] @relation("PaymentVoucher")
+  invoiceAllocations     PaymentAllocation[] @relation("InvoiceVoucher")
+  nettingCycleInvoices   NettingCycleInvoice[]
 
   @@unique([tenantId, voucherNumber])
   @@index([tenantId])
@@ -636,24 +647,72 @@ model Contact {
   country         String?     @db.VarChar(100)
   postalCode      String?     @db.VarChar(20)
   taxId           String?     @db.VarChar(50)
-  creditLimit     Decimal?    @db.Decimal(20, 4)
-  paymentTermDays Int?        @db.SmallInt
-  currencyCode    String      @default("USD") @db.VarChar(3)
-  isActive        Boolean     @default(true)
-  accountId       String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  creditLimit       Decimal?    @db.Decimal(20, 4)
+  paymentTermDays   Int?        @db.SmallInt
+  billingStartDate  DateTime?   @db.Date
+  currencyCode      String      @default("USD") @db.VarChar(3)
+  isActive          Boolean     @default(true)
+  accountId         String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   // Relations
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  account  Account? @relation(fields: [accountId], references: [id])
-  vouchers Voucher[]
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id])
+  account         Account?               @relation(fields: [accountId], references: [id])
+  accountManagers ContactAccountManager[]
+  vouchers        Voucher[]
+  nettingCycles   NettingCycle[]
 
   @@index([tenantId])
   @@index([tenantId, type])
   @@index([tenantId, name])
   @@index([tenantId, accountId])
   @@map("contacts")
+}
+
+// ============================================================
+// Account Manager
+// ============================================================
+
+enum ManagerType {
+  IN_HOUSE
+  PARTNER
+}
+
+model AccountManager {
+  id          String      @id @default(uuid())
+  tenantId    String
+  name        String      @db.VarChar(255)
+  email       String      @db.VarChar(255)
+  managerType ManagerType @default(IN_HOUSE)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id])
+  contacts ContactAccountManager[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, managerType])
+  @@map("account_managers")
+}
+
+model ContactAccountManager {
+  id               String         @id @default(uuid())
+  contactId        String
+  accountManagerId String
+  createdAt        DateTime       @default(now())
+
+  // Relations
+  contact        Contact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  accountManager AccountManager @relation(fields: [accountManagerId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, accountManagerId])
+  @@index([contactId])
+  @@index([accountManagerId])
+  @@map("contact_account_managers")
 }
 
 // ============================================================
@@ -736,4 +795,111 @@ model AuditLog {
   @@index([tenantId, entityType, entityId])
   @@index([tenantId, timestamp])
   @@map("audit_logs")
+}
+
+// ============================================================
+// Payment Allocation (links payments to invoices)
+// ============================================================
+
+model PaymentAllocation {
+  id               String   @id @default(uuid())
+  tenantId         String
+  paymentVoucherId String
+  invoiceVoucherId String
+  amount           Decimal  @db.Decimal(20, 4)
+  paidAt           DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  // Relations
+  tenant         Tenant  @relation(fields: [tenantId], references: [id])
+  paymentVoucher Voucher @relation("PaymentVoucher", fields: [paymentVoucherId], references: [id])
+  invoiceVoucher Voucher @relation("InvoiceVoucher", fields: [invoiceVoucherId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, paymentVoucherId])
+  @@index([tenantId, invoiceVoucherId])
+  @@map("payment_allocations")
+}
+
+// ============================================================
+// Netting Cycles
+// ============================================================
+
+enum NettingCycleStatus {
+  OPEN
+  PENDING_AM
+  PENDING_CEO
+  APPROVED
+  REJECTED
+  AM_REJECTED
+  CEO_REJECTED
+}
+
+model NettingCycle {
+  id              String             @id @default(uuid())
+  tenantId        String
+  contactId       String
+  startDate       DateTime           @db.Date
+  endDate         DateTime           @db.Date
+  dueDate         DateTime           @db.Date
+  status          NettingCycleStatus @default(OPEN)
+  reviewToken     String?            @unique
+  tokenExpiresAt  DateTime?
+  amApprovedById  String?
+  amApprovedAt    DateTime?
+  ceoApprovedById String?
+  ceoApprovedAt   DateTime?
+  rejectedById    String?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  // Relations
+  tenant        Tenant               @relation(fields: [tenantId], references: [id])
+  contact       Contact              @relation(fields: [contactId], references: [id])
+  amApprovedBy  User?                @relation("AMApprover", fields: [amApprovedById], references: [id])
+  ceoApprovedBy User?                @relation("CEOApprover", fields: [ceoApprovedById], references: [id])
+  rejectedBy    User?                @relation("Rejector", fields: [rejectedById], references: [id])
+  comments      NettingCycleComment[]
+  invoices      NettingCycleInvoice[]
+
+  @@unique([tenantId, contactId, startDate, endDate])
+  @@index([tenantId])
+  @@index([tenantId, contactId])
+  @@index([tenantId, status])
+  @@map("netting_cycles")
+}
+
+model NettingCycleInvoice {
+  id        String       @id @default(uuid())
+  cycleId   String
+  voucherId String
+  createdAt DateTime     @default(now())
+
+  // Relations
+  cycle   NettingCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  voucher Voucher      @relation(fields: [voucherId], references: [id])
+
+  @@unique([cycleId, voucherId])
+  @@index([cycleId])
+  @@index([voucherId])
+  @@map("netting_cycle_invoices")
+}
+
+model NettingCycleComment {
+  id        String   @id @default(uuid())
+  tenantId  String
+  cycleId   String
+  userId    String
+  message   String
+  createdAt DateTime @default(now())
+
+  // Relations
+  tenant Tenant       @relation(fields: [tenantId], references: [id])
+  cycle  NettingCycle  @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id])
+
+  @@index([cycleId])
+  @@map("netting_cycle_comments")
 }

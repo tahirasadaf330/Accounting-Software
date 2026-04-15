@@ -61,14 +61,44 @@ export class ContactsService {
         creditLimit: dto.creditLimit ?? null,
         paymentTermDays: dto.paymentTermDays ?? null,
         currencyCode: dto.currencyCode || 'USD',
+        billingStartDate: dto.billingStartDate ? new Date(dto.billingStartDate) : null,
         accountId: accountId || null,
       },
       include: {
         account: {
           select: { id: true, code: true, name: true },
         },
+        accountManagers: {
+          include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
+        },
       },
     });
+
+    // Link account managers (many-to-many)
+    const allManagerIds = [
+      ...(dto.inHouseManagerIds || []),
+      ...(dto.partnerManagerIds || []),
+    ];
+    if (allManagerIds.length > 0) {
+      await this.prisma.contactAccountManager.createMany({
+        data: allManagerIds.map((amId) => ({
+          contactId: contact.id,
+          accountManagerId: amId,
+        })),
+        skipDuplicates: true,
+      });
+      // Re-fetch with managers
+      const full = await this.prisma.contact.findUnique({
+        where: { id: contact.id },
+        include: {
+          account: { select: { id: true, code: true, name: true } },
+          accountManagers: {
+            include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
+          },
+        },
+      });
+      return this.formatResponse(full);
+    }
 
     return this.formatResponse(contact);
   }
@@ -103,6 +133,9 @@ export class ContactsService {
         account: {
           select: { id: true, code: true, name: true },
         },
+        accountManagers: {
+          include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
+        },
       },
       orderBy: { name: 'asc' },
     });
@@ -116,6 +149,9 @@ export class ContactsService {
       include: {
         account: {
           select: { id: true, code: true, name: true },
+        },
+        accountManagers: {
+          include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
         },
       },
     });
@@ -152,13 +188,50 @@ export class ContactsService {
         paymentTermDays: dto.paymentTermDays,
         currencyCode: dto.currencyCode,
         isActive: dto.isActive,
+        billingStartDate: dto.billingStartDate !== undefined ? (dto.billingStartDate ? new Date(dto.billingStartDate) : null) : undefined,
       },
       include: {
         account: {
           select: { id: true, code: true, name: true },
         },
+        accountManagers: {
+          include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
+        },
       },
     });
+
+    // Update account managers if provided
+    if (dto.inHouseManagerIds !== undefined || dto.partnerManagerIds !== undefined) {
+      // Remove existing links
+      await this.prisma.contactAccountManager.deleteMany({
+        where: { contactId: id },
+      });
+      // Re-create
+      const allManagerIds = [
+        ...(dto.inHouseManagerIds || []),
+        ...(dto.partnerManagerIds || []),
+      ];
+      if (allManagerIds.length > 0) {
+        await this.prisma.contactAccountManager.createMany({
+          data: allManagerIds.map((amId) => ({
+            contactId: id,
+            accountManagerId: amId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      // Re-fetch
+      const full = await this.prisma.contact.findUnique({
+        where: { id },
+        include: {
+          account: { select: { id: true, code: true, name: true } },
+          accountManagers: {
+            include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
+          },
+        },
+      });
+      return this.formatResponse(full);
+    }
 
     return this.formatResponse(updated);
   }
@@ -313,9 +386,16 @@ export class ContactsService {
       paymentTermDays: contact.paymentTermDays,
       currencyCode: contact.currencyCode,
       isActive: contact.isActive,
+      billingStartDate: contact.billingStartDate ? (contact.billingStartDate as Date).toISOString().split('T')[0] : null,
       accountId: contact.account?.id || contact.accountId || null,
       accountCode: contact.account?.code || null,
       accountName: contact.account?.name || null,
+      inHouseManagers: (contact.accountManagers || [])
+        .filter((cam: any) => cam.accountManager.managerType === 'IN_HOUSE')
+        .map((cam: any) => ({ id: cam.accountManager.id, name: cam.accountManager.name, email: cam.accountManager.email })),
+      partnerManagers: (contact.accountManagers || [])
+        .filter((cam: any) => cam.accountManager.managerType === 'PARTNER')
+        .map((cam: any) => ({ id: cam.accountManager.id, name: cam.accountManager.name, email: cam.accountManager.email })),
       createdAt: contact.createdAt.toISOString(),
     };
   }

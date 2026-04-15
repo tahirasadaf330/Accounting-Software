@@ -2,8 +2,80 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
-import { X } from 'lucide-react';
+import { X, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/cn';
+
+function MultiSelectDropdown({
+  label,
+  options,
+  selectedIds,
+  onChange,
+}: {
+  label: string;
+  options: { id: string; name: string; email: string }[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedNames = options
+    .filter((o) => selectedIds.includes(o.id))
+    .map((o) => o.name);
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between rounded-lg border border-gray-300 px-3 py-2 text-left text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+      >
+        {selectedNames.length > 0 ? (
+          <span className="truncate text-gray-900">{selectedNames.join(', ')}</span>
+        ) : (
+          <span className="text-gray-400">Select {label.toLowerCase()}</span>
+        )}
+        <ChevronDown className={cn('h-4 w-4 shrink-0 text-gray-400 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+          {options.length === 0 ? (
+            <div className="p-3 text-center text-sm text-gray-500">No managers available</div>
+          ) : (
+            options.map((am) => (
+              <label
+                key={am.id}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(am.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) onChange([...selectedIds, am.id]);
+                    else onChange(selectedIds.filter((id) => id !== am.id));
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600"
+                />
+                <span className="font-medium">{am.name}</span>
+                <span className="text-gray-400">—</span>
+                <span className="truncate text-gray-500">{am.email}</span>
+              </label>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Account {
   id: string;
@@ -33,6 +105,10 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
   const [taxId, setTaxId] = useState('');
   const [creditLimit, setCreditLimit] = useState('');
   const [paymentTermDays, setPaymentTermDays] = useState('');
+  const [billingStartDate, setBillingStartDate] = useState('');
+  const [inHouseManagerIds, setInHouseManagerIds] = useState<string[]>([]);
+  const [partnerManagerIds, setPartnerManagerIds] = useState<string[]>([]);
+  const [accountManagers, setAccountManagers] = useState<{ id: string; name: string; email: string; managerType: string }[]>([]);
   const [autoCreateAccount, setAutoCreateAccount] = useState(true);
   const [accountId, setAccountId] = useState('');
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -54,12 +130,16 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       setTaxId('');
       setCreditLimit('');
       setPaymentTermDays('');
+      setBillingStartDate('');
+      setInHouseManagerIds([]);
+      setPartnerManagerIds([]);
       setAutoCreateAccount(true);
       setAccountId('');
       setError('');
       setFieldErrors({});
       setSubmitting(false);
       loadAccounts();
+      loadAccountManagers();
     }
   }, [open]);
 
@@ -79,6 +159,15 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       setAccounts(list.filter((a: Account) => a.accountType === 'ASSET'));
     } catch {
       setAccounts([]);
+    }
+  };
+
+  const loadAccountManagers = async () => {
+    try {
+      const data = await api.get<any[]>('/account-managers', { isActive: true });
+      setAccountManagers(data);
+    } catch {
+      setAccountManagers([]);
     }
   };
 
@@ -127,6 +216,9 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       if (creditLimit.trim()) body.creditLimit = Number(creditLimit);
       if (paymentTermDays.trim()) body.paymentTermDays = parseInt(paymentTermDays, 10);
       if (!autoCreateAccount && accountId) body.accountId = accountId;
+      if (billingStartDate) body.billingStartDate = billingStartDate;
+      if (inHouseManagerIds.length > 0) body.inHouseManagerIds = inHouseManagerIds;
+      if (partnerManagerIds.length > 0) body.partnerManagerIds = partnerManagerIds;
 
       await api.post('/contacts', body);
       onSuccess();
@@ -166,7 +258,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
+        <form onSubmit={handleSubmit} autoComplete="off" className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto px-6 py-4">
             <div className="space-y-4">
               {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
@@ -231,7 +323,8 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                 <label htmlFor="phone" className="mb-1 block text-sm font-medium text-gray-700">Phone</label>
                 <input
                   id="phone"
-                  type="text"
+                  type="tel"
+                  autoComplete="off"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+1-555-0100"
@@ -304,6 +397,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                 <input
                   id="taxId"
                   type="text"
+                  autoComplete="off"
                   value={taxId}
                   onChange={(e) => setTaxId(e.target.value)}
                   placeholder="e.g. EIN-123456789"
@@ -317,10 +411,13 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                   <label htmlFor="creditLimit" className="mb-1 block text-sm font-medium text-gray-700">Credit Limit</label>
                   <input
                     id="creditLimit"
-                    type="text"
+                    type="number"
+                    inputMode="decimal"
+                    autoComplete="off"
                     value={creditLimit}
                     onChange={(e) => { setCreditLimit(e.target.value); setFieldErrors((p) => ({ ...p, creditLimit: '' })); }}
                     placeholder="e.g. 50000"
+                    min="0"
                     className={cn(
                       'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
                       fieldErrors.creditLimit ? 'border-red-300' : 'border-gray-300',
@@ -332,10 +429,14 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                   <label htmlFor="paymentTermDays" className="mb-1 block text-sm font-medium text-gray-700">Payment Terms (days)</label>
                   <input
                     id="paymentTermDays"
-                    type="text"
+                    type="number"
+                    inputMode="numeric"
+                    autoComplete="off"
                     value={paymentTermDays}
                     onChange={(e) => { setPaymentTermDays(e.target.value); setFieldErrors((p) => ({ ...p, paymentTermDays: '' })); }}
                     placeholder="e.g. 30"
+                    min="1"
+                    max="365"
                     className={cn(
                       'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
                       fieldErrors.paymentTermDays ? 'border-red-300' : 'border-gray-300',
@@ -344,6 +445,31 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                   {fieldErrors.paymentTermDays && <p className="mt-1 text-xs text-red-600">{fieldErrors.paymentTermDays}</p>}
                 </div>
               </div>
+
+              {/* Billing Start Date */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Billing Start Date</label>
+                <input
+                  type="date"
+                  value={billingStartDate}
+                  onChange={(e) => setBillingStartDate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                />
+              </div>
+
+              <MultiSelectDropdown
+                label="In-House Manager(s)"
+                options={accountManagers.filter((am) => am.managerType === 'IN_HOUSE')}
+                selectedIds={inHouseManagerIds}
+                onChange={setInHouseManagerIds}
+              />
+
+              <MultiSelectDropdown
+                label="Partner Manager(s)"
+                options={accountManagers.filter((am) => am.managerType === 'PARTNER')}
+                selectedIds={partnerManagerIds}
+                onChange={setPartnerManagerIds}
+              />
 
               {/* Account Link */}
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">

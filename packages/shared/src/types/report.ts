@@ -45,6 +45,8 @@ export interface IncomeStatementReport {
   netIncome: string;
 }
 
+export type BalanceNature = 'Receivable' | 'Payable' | 'Settled';
+
 export interface StatementLine {
   date: string;
   voucherNumber: string;
@@ -52,6 +54,7 @@ export interface StatementLine {
   debit: string;
   credit: string;
   runningBalance: string;
+  balanceNature: BalanceNature;
 }
 
 export interface StatementOfAccount {
@@ -62,8 +65,11 @@ export interface StatementOfAccount {
   periodEnd: string;
   currency: string;
   openingBalance: string;
+  openingBalanceNature: BalanceNature;
   lines: StatementLine[];
   closingBalance: string;
+  closingBalanceNature: BalanceNature;
+  closingDueDate: string | null;
   totalDebit: string;
   totalCredit: string;
 }

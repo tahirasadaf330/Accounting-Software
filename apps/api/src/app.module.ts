@@ -15,6 +15,9 @@ import { FiscalYearModule } from './modules/fiscal-year/fiscal-year.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { MailModule } from './modules/mail/mail.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
+import { AccountManagersModule } from './modules/account-managers/account-managers.module';
+import { PaymentAllocationsModule } from './modules/payment-allocations/payment-allocations.module';
+import { NettingCyclesModule } from './modules/netting-cycles/netting-cycles.module';
 
 @Module({
   imports: [
@@ -37,6 +40,9 @@ import { ContactsModule } from './modules/contacts/contacts.module';
     FiscalYearModule,
     NotificationsModule,
     ContactsModule,
+    AccountManagersModule,
+    PaymentAllocationsModule,
+    NettingCyclesModule,
   ],
 })
 export class AppModule {}

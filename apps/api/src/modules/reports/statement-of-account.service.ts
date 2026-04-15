@@ -5,7 +5,16 @@ import {
   StatementOfAccount,
   StatementLine,
   NormalBalance,
+  BalanceNature,
 } from '@accounting-saas/shared';
+
+function getBalanceNature(balance: import('decimal.js').Decimal, isDebitNormal: boolean): BalanceNature {
+  if (balance.isZero()) return 'Settled';
+  if (isDebitNormal) {
+    return balance.isPositive() ? 'Receivable' : 'Payable';
+  }
+  return balance.isPositive() ? 'Payable' : 'Receivable';
+}
 
 @Injectable()
 export class StatementOfAccountService {
@@ -86,6 +95,7 @@ export class StatementOfAccountService {
             voucher: {
               select: {
                 voucherNumber: true,
+                periodEnd: true,
               },
             },
           },
@@ -102,6 +112,7 @@ export class StatementOfAccountService {
     let runningBalance = openingBalance;
     let totalDebit = ZERO;
     let totalCredit = ZERO;
+    let latestDueDate: string | null = null;
 
     const statementLines: StatementLine[] = periodLines.map((line) => {
       const debit = toDecimal(line.baseCurrencyDebit.toString());
@@ -122,13 +133,25 @@ export class StatementOfAccountService {
           ? entryDate.toISOString().split('T')[0]
           : String(entryDate).split('T')[0];
 
+      // Track latest due date (periodEnd + 1 day) for closing balance
+      const periodEnd = line.journalEntry.voucher.periodEnd;
+      if (periodEnd) {
+        const d = new Date(periodEnd);
+        d.setDate(d.getDate() + 1);
+        const dueDate = d.toISOString().split('T')[0];
+        if (!latestDueDate || dueDate > latestDueDate) {
+          latestDueDate = dueDate;
+        }
+      }
+
       return {
         date: dateStr,
         voucherNumber: line.journalEntry.voucher.voucherNumber,
         narration: line.narration || line.journalEntry.narration,
         debit: debit.toFixed(4),
         credit: credit.toFixed(4),
-        runningBalance: runningBalance.toFixed(4),
+        runningBalance: runningBalance.abs().toFixed(4),
+        balanceNature: getBalanceNature(runningBalance, isDebitNormal),
       };
     });
 
@@ -147,9 +170,12 @@ export class StatementOfAccountService {
       periodStart: effectiveFromDate.toISOString().split('T')[0],
       periodEnd: effectiveToDate.toISOString().split('T')[0],
       currency: tenant?.baseCurrency ?? 'USD',
-      openingBalance: openingBalance.toFixed(4),
+      openingBalance: openingBalance.abs().toFixed(4),
+      openingBalanceNature: getBalanceNature(openingBalance, isDebitNormal),
       lines: statementLines,
-      closingBalance: closingBalance.toFixed(4),
+      closingBalance: closingBalance.abs().toFixed(4),
+      closingBalanceNature: getBalanceNature(closingBalance, isDebitNormal),
+      closingDueDate: latestDueDate,
       totalDebit: totalDebit.toFixed(4),
       totalCredit: totalCredit.toFixed(4),
     };
