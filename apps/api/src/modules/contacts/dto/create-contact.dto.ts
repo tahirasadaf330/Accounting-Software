@@ -8,6 +8,7 @@ import {
   IsNumber,
   IsInt,
   IsEnum,
+  IsDateString,
   MaxLength,
   Min,
   Max,
@@ -107,6 +108,11 @@ export class CreateContactDto {
   @IsOptional()
   @IsUUID('4', { each: true })
   partnerManagerIds?: string[];
+
+  @ApiPropertyOptional({ example: '2026-04-01', description: 'Billing cycle start date' })
+  @IsOptional()
+  @IsDateString()
+  billingStartDate?: string;
 
   @ApiPropertyOptional({ example: true, description: 'Auto-create a trade account (default: true)' })
   @IsOptional()

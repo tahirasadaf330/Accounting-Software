@@ -44,18 +44,8 @@ export class NotificationEventsListener {
 
       const companyName = tenant?.name || 'Accounting SaaS';
 
-      for (const user of users) {
-        await this.mailService.sendVoucherNotification({
-          email: user.email,
-          firstName: user.firstName,
-          companyName,
-          subject,
-          voucherNumber,
-          actorName,
-          action,
-          message,
-        });
-      }
+      // Email notifications for voucher events disabled
+      // In-app notifications are still created separately
     } catch (error) {
       this.logger.error(`Failed to send voucher emails: ${error}`);
     }

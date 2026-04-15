@@ -105,6 +105,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
   const [taxId, setTaxId] = useState('');
   const [creditLimit, setCreditLimit] = useState('');
   const [paymentTermDays, setPaymentTermDays] = useState('');
+  const [billingStartDate, setBillingStartDate] = useState('');
   const [inHouseManagerIds, setInHouseManagerIds] = useState<string[]>([]);
   const [partnerManagerIds, setPartnerManagerIds] = useState<string[]>([]);
   const [accountManagers, setAccountManagers] = useState<{ id: string; name: string; email: string; managerType: string }[]>([]);
@@ -129,6 +130,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       setTaxId('');
       setCreditLimit('');
       setPaymentTermDays('');
+      setBillingStartDate('');
       setInHouseManagerIds([]);
       setPartnerManagerIds([]);
       setAutoCreateAccount(true);
@@ -214,6 +216,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       if (creditLimit.trim()) body.creditLimit = Number(creditLimit);
       if (paymentTermDays.trim()) body.paymentTermDays = parseInt(paymentTermDays, 10);
       if (!autoCreateAccount && accountId) body.accountId = accountId;
+      if (billingStartDate) body.billingStartDate = billingStartDate;
       if (inHouseManagerIds.length > 0) body.inHouseManagerIds = inHouseManagerIds;
       if (partnerManagerIds.length > 0) body.partnerManagerIds = partnerManagerIds;
 
@@ -255,7 +258,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
+        <form onSubmit={handleSubmit} autoComplete="off" className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto px-6 py-4">
             <div className="space-y-4">
               {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
@@ -320,7 +323,8 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                 <label htmlFor="phone" className="mb-1 block text-sm font-medium text-gray-700">Phone</label>
                 <input
                   id="phone"
-                  type="text"
+                  type="tel"
+                  autoComplete="off"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+1-555-0100"
@@ -393,6 +397,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                 <input
                   id="taxId"
                   type="text"
+                  autoComplete="off"
                   value={taxId}
                   onChange={(e) => setTaxId(e.target.value)}
                   placeholder="e.g. EIN-123456789"
@@ -406,10 +411,13 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                   <label htmlFor="creditLimit" className="mb-1 block text-sm font-medium text-gray-700">Credit Limit</label>
                   <input
                     id="creditLimit"
-                    type="text"
+                    type="number"
+                    inputMode="decimal"
+                    autoComplete="off"
                     value={creditLimit}
                     onChange={(e) => { setCreditLimit(e.target.value); setFieldErrors((p) => ({ ...p, creditLimit: '' })); }}
                     placeholder="e.g. 50000"
+                    min="0"
                     className={cn(
                       'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
                       fieldErrors.creditLimit ? 'border-red-300' : 'border-gray-300',
@@ -421,10 +429,14 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                   <label htmlFor="paymentTermDays" className="mb-1 block text-sm font-medium text-gray-700">Payment Terms (days)</label>
                   <input
                     id="paymentTermDays"
-                    type="text"
+                    type="number"
+                    inputMode="numeric"
+                    autoComplete="off"
                     value={paymentTermDays}
                     onChange={(e) => { setPaymentTermDays(e.target.value); setFieldErrors((p) => ({ ...p, paymentTermDays: '' })); }}
                     placeholder="e.g. 30"
+                    min="1"
+                    max="365"
                     className={cn(
                       'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
                       fieldErrors.paymentTermDays ? 'border-red-300' : 'border-gray-300',
@@ -432,6 +444,17 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                   />
                   {fieldErrors.paymentTermDays && <p className="mt-1 text-xs text-red-600">{fieldErrors.paymentTermDays}</p>}
                 </div>
+              </div>
+
+              {/* Billing Start Date */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Billing Start Date</label>
+                <input
+                  type="date"
+                  value={billingStartDate}
+                  onChange={(e) => setBillingStartDate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                />
               </div>
 
               <MultiSelectDropdown

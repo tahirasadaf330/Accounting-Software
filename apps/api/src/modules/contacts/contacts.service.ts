@@ -61,6 +61,7 @@ export class ContactsService {
         creditLimit: dto.creditLimit ?? null,
         paymentTermDays: dto.paymentTermDays ?? null,
         currencyCode: dto.currencyCode || 'USD',
+        billingStartDate: dto.billingStartDate ? new Date(dto.billingStartDate) : null,
         accountId: accountId || null,
       },
       include: {
@@ -187,6 +188,7 @@ export class ContactsService {
         paymentTermDays: dto.paymentTermDays,
         currencyCode: dto.currencyCode,
         isActive: dto.isActive,
+        billingStartDate: dto.billingStartDate !== undefined ? (dto.billingStartDate ? new Date(dto.billingStartDate) : null) : undefined,
       },
       include: {
         account: {
@@ -384,6 +386,7 @@ export class ContactsService {
       paymentTermDays: contact.paymentTermDays,
       currencyCode: contact.currencyCode,
       isActive: contact.isActive,
+      billingStartDate: contact.billingStartDate ? (contact.billingStartDate as Date).toISOString().split('T')[0] : null,
       accountId: contact.account?.id || contact.accountId || null,
       accountCode: contact.account?.code || null,
       accountName: contact.account?.name || null,

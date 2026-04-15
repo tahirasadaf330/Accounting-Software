@@ -50,6 +50,7 @@ const navigation: NavItem[] = [
       { name: 'Purchase Invoice', href: '/dashboard/vouchers/purchase-invoice', icon: ShoppingCart },
     ],
   },
+  { name: 'Invoice Netting', href: '/dashboard/netting-cycles', icon: ArrowLeftRight },
   { name: 'Journal Entries', href: '/dashboard/journal', icon: ArrowLeftRight },
   { name: 'Bank Reconciliation', href: '/dashboard/bank', icon: Landmark },
   { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },

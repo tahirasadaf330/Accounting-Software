@@ -128,6 +128,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
   const [creditLimit, setCreditLimit] = useState('');
   const [paymentTermDays, setPaymentTermDays] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [billingStartDate, setBillingStartDate] = useState('');
   const [inHouseManagerIds, setInHouseManagerIds] = useState<string[]>([]);
   const [partnerManagerIds, setPartnerManagerIds] = useState<string[]>([]);
   const [accountManagers, setAccountManagers] = useState<{ id: string; name: string; email: string; managerType: string }[]>([]);
@@ -158,6 +159,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
       setCreditLimit(contact.creditLimit || '');
       setPaymentTermDays(contact.paymentTermDays?.toString() || '');
       setIsActive(contact.isActive);
+      setBillingStartDate((contact as any).billingStartDate || '');
       setInHouseManagerIds((contact.inHouseManagers || []).map((am: any) => am.id));
       setPartnerManagerIds((contact.partnerManagers || []).map((am: any) => am.id));
       setError('');
@@ -214,6 +216,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
         postalCode: postalCode.trim() || null,
         taxId: taxId.trim() || null,
         isActive,
+        billingStartDate: billingStartDate || null,
         inHouseManagerIds,
         partnerManagerIds,
       };
@@ -396,6 +399,17 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
                   />
                   {fieldErrors.paymentTermDays && <p className="mt-1 text-xs text-red-600">{fieldErrors.paymentTermDays}</p>}
                 </div>
+              </div>
+
+              {/* Billing Start Date */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Billing Start Date</label>
+                <input
+                  type="date"
+                  value={billingStartDate}
+                  onChange={(e) => setBillingStartDate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                />
               </div>
 
               <MultiSelectDropdown

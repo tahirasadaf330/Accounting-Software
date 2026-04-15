@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsInt,
   IsUUID,
+  IsDateString,
   MaxLength,
   Min,
   Max,
@@ -89,6 +90,11 @@ export class UpdateContactDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({ example: '2026-04-01', description: 'Billing cycle start date' })
+  @IsOptional()
+  @IsDateString()
+  billingStartDate?: string;
 
   @ApiPropertyOptional({ description: 'In-House manager IDs', type: [String] })
   @IsOptional()
