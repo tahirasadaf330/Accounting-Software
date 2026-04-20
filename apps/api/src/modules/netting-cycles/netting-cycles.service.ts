@@ -207,7 +207,7 @@ export class NettingCyclesService {
       });
       this.mailService.sendNettingCycleReview({
         email: ceoEmail,
-        name: 'CEO',
+        name: process.env.CEO_NAME || 'CEO',
         contactName: contact?.name || '',
         cycleId: ceoToken,
         startDate: (cycle.startDate as Date).toISOString().split('T')[0],
@@ -379,7 +379,7 @@ export class NettingCyclesService {
         });
         this.mailService.sendNettingCycleReview({
           email: ceoEmail,
-          name: 'CEO',
+          name: process.env.CEO_NAME || 'CEO',
           contactName: contact?.name || '',
           cycleId: ceoToken,
           startDate: (cycle.startDate as Date).toISOString().split('T')[0],
