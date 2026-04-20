@@ -1089,43 +1089,102 @@ function VoucherView({
                       </td>
                     </tr>
                   ) : (
-                    unpaidInvoices
-                      .filter((inv) => inv.status !== 'SETTLED')
-                      .map((inv) => (
-                        <tr key={inv.id}>
-                          <td className="px-3 py-2">
-                            <div className="font-mono text-gray-700">{inv.voucherNumber}</div>
-                            <div className="text-xs text-gray-400">{inv.date}</div>
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-900">
-                            {formatCurrency(inv.totalAmount, voucher.currencyCode)}
-                          </td>
-                          <td className="px-3 py-2 text-right text-gray-600">
-                            {formatCurrency(inv.remaining, voucher.currencyCode)}
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={allocAmounts[inv.id] || ''}
-                              onChange={(e) => {
-                                const val = e.target.value.replace(/[^0-9.]/g, '');
-                                setAllocAmounts((p) => ({ ...p, [inv.id]: val }));
-                              }}
-                              placeholder="0.00"
-                              className="w-24 rounded-md border border-gray-200 px-2 py-1 text-right text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="datetime-local"
-                              value={allocDates[inv.id] || ''}
-                              onChange={(e) => setAllocDates((p) => ({ ...p, [inv.id]: e.target.value }))}
-                              className="rounded-md border border-gray-200 px-2 py-1 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-                            />
-                          </td>
-                        </tr>
-                      ))
+                    (() => {
+                      // Group invoices by billingPeriodKey
+                      const unpaid = unpaidInvoices.filter((inv: any) => inv.status !== 'SETTLED');
+                      const groups: Record<string, { label: string; items: any[] }> = {};
+                      unpaid.forEach((inv: any) => {
+                        const key = inv.billingPeriodKey || 'ungrouped';
+                        if (!groups[key]) groups[key] = { label: inv.billingPeriodLabel || 'No billing period', items: [] };
+                        groups[key].items.push(inv);
+                      });
+
+                      const rows: JSX.Element[] = [];
+                      Object.entries(groups).forEach(([key, group]) => {
+                        const periodRemaining = group.items.reduce((s, i) => s + parseFloat(i.remaining), 0);
+                        const periodAllocated = group.items.reduce((s, i) => s + (parseFloat(allocAmounts[i.id] || '0') || 0), 0);
+
+                        // Period header with bulk allocate input
+                        rows.push(
+                          <tr key={`hdr-${key}`} className="bg-blue-50">
+                            <td colSpan={2} className="px-3 py-2 text-xs font-semibold text-blue-900 uppercase">
+                              📅 Billing Period: {group.label}
+                            </td>
+                            <td className="px-3 py-2 text-right text-sm font-medium text-blue-900">
+                              {formatCurrency(periodRemaining.toFixed(2), voucher.currencyCode)}
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="Allocate to period"
+                                onBlur={(e) => {
+                                  const raw = e.target.value.replace(/[^0-9.]/g, '');
+                                  const amt = parseFloat(raw) || 0;
+                                  if (amt === 0) return;
+                                  // Auto-distribute across invoices in this period
+                                  let remaining = amt;
+                                  const updates: Record<string, string> = {};
+                                  for (const item of group.items) {
+                                    const inv_rem = parseFloat(item.remaining);
+                                    if (remaining <= 0) { updates[item.id] = ''; continue; }
+                                    const take = Math.min(remaining, inv_rem);
+                                    updates[item.id] = take.toFixed(2);
+                                    remaining -= take;
+                                  }
+                                  setAllocAmounts((p) => ({ ...p, ...updates }));
+                                  e.target.value = '';
+                                }}
+                                className="w-28 rounded-md border border-blue-300 px-2 py-1 text-right text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-xs text-blue-700">
+                              Allocated: {formatCurrency(periodAllocated.toFixed(2), voucher.currencyCode)}
+                            </td>
+                          </tr>
+                        );
+
+                        // Individual invoices in this period
+                        group.items.forEach((inv) => {
+                          rows.push(
+                            <tr key={inv.id}>
+                              <td className="px-3 py-2 pl-6">
+                                <div className="font-mono text-gray-700 text-xs">{inv.voucherNumber}</div>
+                                <div className="text-xs text-gray-400">{inv.date}</div>
+                              </td>
+                              <td className="px-3 py-2 text-right text-gray-900">
+                                {formatCurrency(inv.totalAmount, voucher.currencyCode)}
+                              </td>
+                              <td className="px-3 py-2 text-right text-gray-600">
+                                {formatCurrency(inv.remaining, voucher.currencyCode)}
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={allocAmounts[inv.id] || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/[^0-9.]/g, '');
+                                    setAllocAmounts((p) => ({ ...p, [inv.id]: val }));
+                                  }}
+                                  placeholder="0.00"
+                                  className="w-24 rounded-md border border-gray-200 px-2 py-1 text-right text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="datetime-local"
+                                  value={allocDates[inv.id] || ''}
+                                  onChange={(e) => setAllocDates((p) => ({ ...p, [inv.id]: e.target.value }))}
+                                  className="rounded-md border border-gray-200 px-2 py-1 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                                />
+                              </td>
+                            </tr>
+                          );
+                        });
+                      });
+                      return rows;
+                    })()
                   )}
                 </tbody>
               </table>

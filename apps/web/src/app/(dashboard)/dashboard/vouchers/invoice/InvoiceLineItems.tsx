@@ -40,7 +40,9 @@ function AccountCombobox({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const selected = accounts.find((a) => a.id === value);
 
@@ -60,11 +62,52 @@ function AccountCombobox({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Reset active index when search changes
+  useEffect(() => { setActiveIndex(0); }, [search]);
+
+  // Scroll active item into view
+  useEffect(() => {
+    if (open && listRef.current) {
+      const activeEl = listRef.current.querySelector(`[data-index="${activeIndex}"]`);
+      if (activeEl) (activeEl as HTMLElement).scrollIntoView({ block: 'nearest' });
+    }
+  }, [activeIndex, open]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, filtered.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const account = filtered[activeIndex];
+      if (account) {
+        onChange(account.id);
+        setOpen(false);
+        setSearch('');
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setOpen(false);
+      setSearch('');
+    }
+  };
+
+  const handleTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      setOpen(true);
+    }
+  };
+
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen(!open)}
+        onKeyDown={handleTriggerKeyDown}
         className={cn(
           'flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm outline-none transition-colors',
           hasError
@@ -91,27 +134,31 @@ function AccountCombobox({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search accounts..."
+                onKeyDown={handleKeyDown}
+                placeholder="Search accounts... (↑↓ to navigate, Enter to select)"
                 className="w-full rounded-md border border-gray-200 py-1.5 pl-9 pr-3 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
                 autoFocus
               />
             </div>
           </div>
-          <div className="max-h-48 overflow-y-auto">
+          <div ref={listRef} className="max-h-48 overflow-y-auto">
             {filtered.length === 0 ? (
               <div className="p-3 text-center text-sm text-gray-500">No accounts found</div>
             ) : (
-              filtered.map((account) => (
+              filtered.map((account, index) => (
                 <button
                   key={account.id}
                   type="button"
+                  data-index={index}
+                  onMouseEnter={() => setActiveIndex(index)}
                   onMouseDown={() => {
                     onChange(account.id);
                     setOpen(false);
                     setSearch('');
                   }}
                   className={cn(
-                    'flex w-full items-center px-3 py-2 text-left text-sm hover:bg-gray-50',
+                    'flex w-full items-center px-3 py-2 text-left text-sm',
+                    index === activeIndex ? 'bg-primary-100' : 'hover:bg-gray-50',
                     value === account.id && 'bg-primary-50',
                   )}
                 >

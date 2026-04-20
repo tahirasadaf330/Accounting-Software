@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
 
@@ -69,7 +69,22 @@ export default function NettingCyclesPage() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(false);
 
+  // Delete
+  const [deleteTarget, setDeleteTarget] = useState<NettingCycle | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const fmt = (amount: string | number) => formatCurrency(amount, baseCurrency);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      await api.delete(`/netting-cycles/${deleteTarget.id}`);
+      setDeleteTarget(null);
+      loadCycles();
+    } catch { /* ignore */ }
+    setDeleteLoading(false);
+  };
 
   useEffect(() => {
     api.get<any>('/contacts', { isActive: true }).then((data) => {
@@ -234,6 +249,15 @@ export default function NettingCyclesPage() {
                       {cycle.netNature}
                     </p>
                   </div>
+                  {canManage && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(cycle); }}
+                      className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                      title="Delete netting"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
               <p className="text-xs text-gray-400">{cycle.invoices.length} invoice(s) in this cycle</p>
@@ -243,6 +267,34 @@ export default function NettingCyclesPage() {
       )}
 
       {/* Create Netting Modal */}
+      {/* Delete Confirm Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Delete Netting</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Are you sure you want to delete the netting record for <strong>{deleteTarget.contactName}</strong> ({deleteTarget.startDate} — {deleteTarget.endDate})?
+            </p>
+            <p className="mt-1 text-xs text-gray-400">This action cannot be undone.</p>
+            <div className="mt-4 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteLoading ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
@@ -306,9 +358,17 @@ export default function NettingCyclesPage() {
                               {inv.voucherType === 'SALES' ? 'Receivable' : 'Payable'}
                             </span>
                           </div>
-                          <div className="flex items-center justify-between text-xs text-gray-500">
-                            <span>{inv.date}</span>
+                          <div className="flex items-center justify-between text-xs text-gray-500 mt-0.5">
+                            <span>
+                              Billing Period:{' '}
+                              {inv.periodStart && inv.periodEnd
+                                ? `${inv.periodStart} — ${inv.periodEnd}`
+                                : '—'}
+                            </span>
                             <span>Remaining: {fmt(inv.remaining)}</span>
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">
+                            Invoice Date: {inv.date} | Amount: {fmt(inv.totalAmount)}
                           </div>
                         </div>
                       </label>
