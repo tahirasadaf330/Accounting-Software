@@ -40,9 +40,9 @@ export class PaymentAllocationsService {
       0,
     );
 
-    // Check total doesn't exceed payment amount
+    // Check total doesn't exceed payment amount (with small tolerance for floating-point)
     const totalAllocated = existingTotal.toNumber() + newTotal;
-    if (totalAllocated > payment.totalAmount.toNumber()) {
+    if (totalAllocated > payment.totalAmount.toNumber() + 0.01) {
       throw new BadRequestException(
         `Total allocation ($${totalAllocated.toFixed(2)}) exceeds payment amount ($${payment.totalAmount.toFixed(2)})`,
       );
@@ -108,6 +108,12 @@ export class PaymentAllocationsService {
   }
 
   async getUnpaidInvoicesForContact(tenantId: string, contactId: string, paymentType?: string) {
+    // Load contact to get billing config
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: contactId, tenantId },
+      select: { billingStartDate: true, paymentTermDays: true },
+    });
+
     // RECEIPT → show only SALES invoices, PAYMENT → show only PURCHASE invoices
     let invoiceTypes: VoucherType[];
     if (paymentType === 'RECEIPT') {
@@ -139,6 +145,25 @@ export class PaymentAllocationsService {
       orderBy: { date: 'asc' },
     });
 
+    // Compute billing period for each invoice based on contact's billingStartDate + paymentTermDays
+    const billingStart = contact?.billingStartDate ? new Date(contact.billingStartDate) : null;
+    const termDays = contact?.paymentTermDays || 30;
+
+    const computeBillingPeriod = (invoiceDate: Date): { key: string; label: string; start: string; end: string } | null => {
+      if (!billingStart) return null;
+      const msPerDay = 86400000;
+      const diffDays = Math.floor((invoiceDate.getTime() - billingStart.getTime()) / msPerDay);
+      if (diffDays < 0) return null;
+      const periodIndex = Math.floor(diffDays / termDays);
+      const periodStart = new Date(billingStart);
+      periodStart.setDate(periodStart.getDate() + periodIndex * termDays);
+      const periodEnd = new Date(periodStart);
+      periodEnd.setDate(periodEnd.getDate() + termDays - 1);
+      const startStr = periodStart.toISOString().split('T')[0];
+      const endStr = periodEnd.toISOString().split('T')[0];
+      return { key: startStr, label: `${startStr} — ${endStr}`, start: startStr, end: endStr };
+    };
+
     return invoices.map((inv) => {
       const totalPaid = inv.invoiceAllocations.reduce(
         (sum, a) => sum + a.amount.toNumber(),
@@ -146,6 +171,7 @@ export class PaymentAllocationsService {
       );
       const remaining = inv.totalAmount.toNumber() - totalPaid;
       const status = remaining <= 0 ? 'SETTLED' : totalPaid > 0 ? 'PARTIAL' : 'UNPAID';
+      const billingPeriod = computeBillingPeriod(inv.date as Date);
 
       return {
         id: inv.id,
@@ -154,6 +180,8 @@ export class PaymentAllocationsService {
         totalAmount: inv.totalAmount.toFixed(4),
         date: (inv.date as Date).toISOString().split('T')[0],
         periodEnd: inv.periodEnd ? (inv.periodEnd as Date).toISOString().split('T')[0] : null,
+        billingPeriodKey: billingPeriod?.key || 'ungrouped',
+        billingPeriodLabel: billingPeriod?.label || 'No billing period set',
         totalPaid: totalPaid.toFixed(4),
         remaining: remaining.toFixed(4),
         status,
@@ -202,7 +230,7 @@ export class PaymentAllocationsService {
         date: true,
         periodEnd: true,
         contactId: true,
-        contact: { select: { name: true } },
+        contact: { select: { name: true, paymentTermDays: true } },
         invoiceAllocations: {
           select: { amount: true, paidAt: true },
           orderBy: { paidAt: 'desc' },
@@ -222,11 +250,12 @@ export class PaymentAllocationsService {
         ? inv.invoiceAllocations[0].paidAt.toISOString()
         : null;
 
-      // Due date = periodEnd + 1 day
+      // Due date = periodEnd + contact's payment terms (in days)
       let dueDate: string | null = null;
       if (inv.periodEnd) {
         const d = new Date(inv.periodEnd);
-        d.setDate(d.getDate() + 1);
+        const termDays = inv.contact?.paymentTermDays || 1;
+        d.setDate(d.getDate() + termDays);
         dueDate = d.toISOString().split('T')[0];
       }
 

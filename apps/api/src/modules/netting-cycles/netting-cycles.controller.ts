@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Param,
   Body,
   Query,
@@ -115,5 +116,16 @@ export class NettingCyclesController {
     @Body() dto: AddCommentDto,
   ) {
     return this.service.addComment(tenantId, id, userId, dto);
+  }
+
+  @Delete(':id')
+  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a netting cycle' })
+  async delete(
+    @TenantId() tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    await this.service.delete(tenantId, id);
   }
 }

@@ -62,6 +62,13 @@ export default function VouchersPage() {
     loadVouchers();
   }, [statusFilter]);
 
+  // Auto-refresh when page gets focus (returning from another tab/page)
+  useEffect(() => {
+    const handleFocus = () => loadVouchers();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [statusFilter]);
+
   const loadVouchers = async () => {
     setLoading(true);
     try {
@@ -150,7 +157,7 @@ export default function VouchersPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-2">
-          {['', 'DRAFT', 'PENDING_APPROVAL', 'POSTED', 'REVERSED'].map((s) => (
+          {['', 'DRAFT', 'PENDING_APPROVAL', 'POSTED', 'REJECTED', 'REVERSED'].map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}

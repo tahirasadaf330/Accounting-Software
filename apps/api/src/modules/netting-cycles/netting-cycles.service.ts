@@ -32,7 +32,8 @@ export class NettingCyclesService {
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
     const dueDate = new Date(endDate);
-    dueDate.setDate(dueDate.getDate() + 1);
+    const termDays = contact.paymentTermDays || 1;
+    dueDate.setDate(dueDate.getDate() + termDays);
 
     // Duplicate prevention
     const existing = await this.prisma.nettingCycle.findUnique({
@@ -301,6 +302,20 @@ export class NettingCyclesService {
     };
   }
 
+  async delete(tenantId: string, id: string) {
+    const cycle = await this.prisma.nettingCycle.findFirst({
+      where: { id, tenantId },
+    });
+    if (!cycle) throw new NotFoundException('Netting cycle not found');
+
+    // Cascade delete comments and invoice links, then delete cycle
+    await this.prisma.$transaction([
+      this.prisma.nettingCycleComment.deleteMany({ where: { cycleId: id } }),
+      this.prisma.nettingCycleInvoice.deleteMany({ where: { cycleId: id } }),
+      this.prisma.nettingCycle.delete({ where: { id } }),
+    ]);
+  }
+
   // --- Public token-based methods (no auth required) ---
 
   async getByToken(token: string) {
@@ -453,16 +468,20 @@ export class NettingCyclesService {
   }
 
   async getUnpaidInvoicesForRange(tenantId: string, contactId: string, startDate: string, endDate: string) {
+    // Filter by invoice BILLING PERIOD (periodStart/periodEnd), not invoice/posted date.
+    // An invoice appears if its billing period fully falls within the selected range:
+    //   periodStart >= startDate AND periodEnd <= endDate
+    const rangeStart = new Date(startDate);
+    const rangeEnd = new Date(endDate);
+
     const invoices = await this.prisma.voucher.findMany({
       where: {
         tenantId,
         contactId,
         status: VoucherStatus.POSTED,
         voucherType: { in: [VoucherType.SALES, VoucherType.PURCHASE] },
-        date: {
-          gte: new Date(startDate),
-          lte: new Date(endDate),
-        },
+        periodStart: { gte: rangeStart },
+        periodEnd: { lte: rangeEnd },
       },
       select: {
         id: true,
@@ -470,9 +489,11 @@ export class NettingCyclesService {
         voucherType: true,
         totalAmount: true,
         date: true,
+        periodStart: true,
+        periodEnd: true,
         invoiceAllocations: { select: { amount: true } },
       },
-      orderBy: { date: 'asc' },
+      orderBy: { periodStart: 'asc' },
     });
 
     return invoices
@@ -485,6 +506,8 @@ export class NettingCyclesService {
           voucherType: inv.voucherType,
           totalAmount: inv.totalAmount.toFixed(4),
           date: (inv.date as Date).toISOString().split('T')[0],
+          periodStart: inv.periodStart ? (inv.periodStart as Date).toISOString().split('T')[0] : null,
+          periodEnd: inv.periodEnd ? (inv.periodEnd as Date).toISOString().split('T')[0] : null,
           totalPaid: paid.toFixed(4),
           remaining: remaining.toFixed(4),
           status: remaining <= 0.01 ? 'SETTLED' : paid > 0 ? 'PARTIAL' : 'UNPAID',

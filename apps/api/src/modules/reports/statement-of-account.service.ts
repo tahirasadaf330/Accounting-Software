@@ -96,6 +96,7 @@ export class StatementOfAccountService {
               select: {
                 voucherNumber: true,
                 periodEnd: true,
+                contact: { select: { paymentTermDays: true } },
               },
             },
           },
@@ -133,11 +134,12 @@ export class StatementOfAccountService {
           ? entryDate.toISOString().split('T')[0]
           : String(entryDate).split('T')[0];
 
-      // Track latest due date (periodEnd + 1 day) for closing balance
+      // Track latest due date (periodEnd + contact's payment terms in days) for closing balance
       const periodEnd = line.journalEntry.voucher.periodEnd;
       if (periodEnd) {
         const d = new Date(periodEnd);
-        d.setDate(d.getDate() + 1);
+        const termDays = line.journalEntry.voucher.contact?.paymentTermDays || 1;
+        d.setDate(d.getDate() + termDays);
         const dueDate = d.toISOString().split('T')[0];
         if (!latestDueDate || dueDate > latestDueDate) {
           latestDueDate = dueDate;

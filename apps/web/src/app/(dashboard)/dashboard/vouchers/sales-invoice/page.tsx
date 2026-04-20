@@ -184,6 +184,14 @@ export default function SalesInvoicePage() {
         }
       }
 
+      // Auto-submit and auto-approve (skip manual approval steps)
+      try {
+        await api.post(`/vouchers/${result.id}/submit`, {});
+        await api.post(`/vouchers/${result.id}/approve`, {});
+      } catch (approvalErr) {
+        console.error('Auto-approval failed:', approvalErr);
+      }
+
       files.forEach((f) => {
         if (f.preview) URL.revokeObjectURL(f.preview);
       });
