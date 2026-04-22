@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,6 +10,9 @@ import { cn } from '@/lib/cn';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
 import { ArrowLeft, ChevronDown, Plus, Trash2 } from 'lucide-react';
+import InvoiceAllocationPanel, {
+  AllocationSelection,
+} from './InvoiceAllocationPanel';
 
 // --- Types ---
 
@@ -24,7 +27,7 @@ interface Account {
 interface Contact {
   id: string;
   name: string;
-  type: string;
+  type: 'CUSTOMER' | 'VENDOR' | 'BOTH';
   accountId: string | null;
   accountCode: string | null;
   accountName: string | null;
@@ -224,12 +227,16 @@ export default function NewVoucherPage() {
   const [selectedContactId, setSelectedContactId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [allocations, setAllocations] = useState<AllocationSelection[]>([]);
+  const [bankAccountId, setBankAccountId] = useState('');
+  const lastAutoReferenceRef = useRef('');
 
   const {
     register,
     control,
     handleSubmit,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<VoucherFormData>({
     resolver: zodResolver(voucherSchema),
@@ -249,6 +256,42 @@ export default function NewVoucherPage() {
 
   const watchedLineItems = useWatch({ control, name: 'lineItems' });
   const watchedVoucherType = useWatch({ control, name: 'voucherType' });
+  const watchedDate = useWatch({ control, name: 'date' });
+
+  const selectedContact = useMemo(
+    () => contacts.find((c) => c.id === selectedContactId) || null,
+    [contacts, selectedContactId],
+  );
+
+  const showAllocationPanel =
+    !!selectedContact &&
+    !!selectedContact.accountId &&
+    (watchedVoucherType === 'RECEIPT' ||
+      watchedVoucherType === 'PAYMENT' ||
+      watchedVoucherType === 'JOURNAL');
+
+  // Sum receivables / payables from current allocation selections
+  const allocSums = useMemo(() => {
+    let rx = 0;
+    let py = 0;
+    for (const a of allocations) {
+      if (a.voucherType === 'SALES') rx += a.amount;
+      else if (a.voucherType === 'PURCHASE') py += a.amount;
+    }
+    return { rx, py };
+  }, [allocations]);
+
+  // Warn if voucher type doesn't match the side of ticked invoices
+  const typeMismatchWarning = useMemo(() => {
+    if (!allocations.length) return null;
+    if (watchedVoucherType === 'RECEIPT' && allocSums.rx === 0 && allocSums.py > 0) {
+      return 'You ticked only purchase (payable) invoices — consider switching voucher type to Payment.';
+    }
+    if (watchedVoucherType === 'PAYMENT' && allocSums.py === 0 && allocSums.rx > 0) {
+      return 'You ticked only sales (receivable) invoices — consider switching voucher type to Receipt.';
+    }
+    return null;
+  }, [watchedVoucherType, allocations, allocSums]);
 
   const totalDebit = (watchedLineItems || []).reduce((sum, item) => sum + (parseFloat(item?.debit) || 0), 0);
   const totalCredit = (watchedLineItems || []).reduce((sum, item) => sum + (parseFloat(item?.credit) || 0), 0);
@@ -280,6 +323,7 @@ export default function NewVoucherPage() {
 
   const handleContactChange = (contactId: string) => {
     setSelectedContactId(contactId);
+    setAllocations([]);
     if (contactId) {
       const contact = contacts.find((c) => c.id === contactId);
       if (contact?.accountId) {
@@ -288,6 +332,85 @@ export default function NewVoucherPage() {
       }
     }
   };
+
+  // Auto-fill line items from allocation selections.
+  // Rules:
+  //   - Only receivables ticked: Bank (Debit) + Trade (Credit), both = Σrx
+  //   - Only payables ticked:    Trade (Debit) + Bank (Credit), both = Σpy
+  //   - Both ticked (netting):   Bank |Σrx−Σpy| on the dominant side, +
+  //                              Trade account on the opposite sides —
+  //                              single-account contacts get net against trade,
+  //                              so we emit 2 lines:
+  //                                Dr/Cr Bank   |Σrx−Σpy|  (dominant side)
+  //                                Cr/Dr Trade  |Σrx−Σpy|
+  useEffect(() => {
+    if (!selectedContact?.accountId) return;
+    if (allocations.length === 0) return;
+    const { rx, py } = allocSums;
+    const tradeAccount = selectedContact.accountId;
+
+    // If bank account not chosen yet, just set trade; user will pick bank.
+    if (rx > 0 && py === 0) {
+      // Receipt side: Bank Dr, Trade Cr
+      if (bankAccountId) {
+        setValue('lineItems.0.accountId', bankAccountId, { shouldValidate: false });
+        setValue('lineItems.0.debit', rx.toFixed(2), { shouldValidate: false });
+        setValue('lineItems.0.credit', '', { shouldValidate: false });
+      }
+      setValue('lineItems.1.accountId', tradeAccount, { shouldValidate: false });
+      setValue('lineItems.1.debit', '', { shouldValidate: false });
+      setValue('lineItems.1.credit', rx.toFixed(2), { shouldValidate: false });
+    } else if (py > 0 && rx === 0) {
+      // Payment side: Trade Dr, Bank Cr
+      setValue('lineItems.0.accountId', tradeAccount, { shouldValidate: false });
+      setValue('lineItems.0.debit', py.toFixed(2), { shouldValidate: false });
+      setValue('lineItems.0.credit', '', { shouldValidate: false });
+      if (bankAccountId) {
+        setValue('lineItems.1.accountId', bankAccountId, { shouldValidate: false });
+        setValue('lineItems.1.debit', '', { shouldValidate: false });
+        setValue('lineItems.1.credit', py.toFixed(2), { shouldValidate: false });
+      }
+    } else if (rx > 0 && py > 0) {
+      // Netting: net cash moves on bank, net trade on trade account.
+      const net = rx - py;
+      const abs = Math.abs(net).toFixed(2);
+      if (net >= 0) {
+        // More receivable cleared than payable — net is cash IN.
+        if (bankAccountId) {
+          setValue('lineItems.0.accountId', bankAccountId, { shouldValidate: false });
+          setValue('lineItems.0.debit', abs, { shouldValidate: false });
+          setValue('lineItems.0.credit', '', { shouldValidate: false });
+        }
+        setValue('lineItems.1.accountId', tradeAccount, { shouldValidate: false });
+        setValue('lineItems.1.debit', '', { shouldValidate: false });
+        setValue('lineItems.1.credit', abs, { shouldValidate: false });
+      } else {
+        // More payable cleared than receivable — net is cash OUT.
+        setValue('lineItems.0.accountId', tradeAccount, { shouldValidate: false });
+        setValue('lineItems.0.debit', abs, { shouldValidate: false });
+        setValue('lineItems.0.credit', '', { shouldValidate: false });
+        if (bankAccountId) {
+          setValue('lineItems.1.accountId', bankAccountId, { shouldValidate: false });
+          setValue('lineItems.1.debit', '', { shouldValidate: false });
+          setValue('lineItems.1.credit', abs, { shouldValidate: false });
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allocations, bankAccountId, selectedContact?.accountId]);
+
+  // Auto-fill Reference with comma-separated voucher numbers of ticked
+  // invoices. Respects manual edits: if the user has typed their own value
+  // that doesn't match our last auto-fill, we leave it alone.
+  useEffect(() => {
+    const joined = allocations.map((a) => a.voucherNumber).join(', ');
+    const current = getValues('reference') ?? '';
+    if (current === '' || current === lastAutoReferenceRef.current) {
+      setValue('reference', joined, { shouldValidate: false });
+      lastAutoReferenceRef.current = joined;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allocations]);
 
   const handleDebitChange = (index: number, value: string) => {
     setValue(`lineItems.${index}.debit`, value, { shouldValidate: false });
@@ -307,7 +430,7 @@ export default function NewVoucherPage() {
     setSubmitting(true);
     setApiError(null);
     try {
-      const body: any = {
+      const voucherPayload: any = {
         voucherType: data.voucherType,
         date: data.date,
         narration: data.narration,
@@ -320,12 +443,30 @@ export default function NewVoucherPage() {
         })),
       };
       if (selectedContactId) {
-        body.contactId = selectedContactId;
+        voucherPayload.contactId = selectedContactId;
       }
-      const result = await api.post<{ id: string }>('/vouchers', body);
+
+      let result: { id: string };
+      if (allocations.length > 0) {
+        if (!selectedContactId) {
+          throw new Error('A contact is required when allocating to invoices');
+        }
+        result = await api.post<{ id: string }>('/vouchers/with-allocations', {
+          voucher: voucherPayload,
+          allocations: allocations.map((a) => ({
+            invoiceVoucherId: a.invoiceVoucherId,
+            amount: a.amount,
+            paidAt: a.paidAt,
+          })),
+        });
+      } else {
+        result = await api.post<{ id: string }>('/vouchers', voucherPayload);
+      }
       router.push(`/dashboard/vouchers/${result.id}`);
     } catch (err) {
       if (err instanceof ApiError) {
+        setApiError(err.message);
+      } else if (err instanceof Error) {
         setApiError(err.message);
       } else {
         setApiError('An unexpected error occurred');
@@ -426,23 +567,6 @@ export default function NewVoucherPage() {
               )}
             </div>
 
-            {/* Reference */}
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-gray-700">Reference</label>
-              <input
-                type="text"
-                {...register('reference')}
-                placeholder="Invoice number, cheque number, etc."
-                className={cn(
-                  'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
-                  errors.reference ? 'border-red-300' : 'border-gray-300',
-                )}
-              />
-              {errors.reference && (
-                <p className="mt-1 text-xs text-red-600">{errors.reference.message}</p>
-              )}
-            </div>
-
             {/* Contact selector */}
             <div className="sm:col-span-2">
               <label className="mb-1 block text-sm font-medium text-gray-700">Contact</label>
@@ -462,8 +586,62 @@ export default function NewVoucherPage() {
                 Selecting a contact will auto-populate their trade account in line items
               </p>
             </div>
+
+            {/* Reference (auto-fills with ticked invoice numbers) */}
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-gray-700">Reference</label>
+              <input
+                type="text"
+                {...register('reference')}
+                placeholder="Auto-fills from ticked invoices, or type manually (cheque #, etc.)"
+                className={cn(
+                  'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
+                  errors.reference ? 'border-red-300' : 'border-gray-300',
+                )}
+              />
+              {errors.reference && (
+                <p className="mt-1 text-xs text-red-600">{errors.reference.message}</p>
+              )}
+            </div>
+
+            {/* Bank/Cash account (shown when allocation panel is active) */}
+            {showAllocationPanel && (
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Bank / Cash Account <span className="text-red-500">*</span>
+                </label>
+                <AccountCombobox
+                  accounts={accounts}
+                  value={bankAccountId}
+                  onChange={setBankAccountId}
+                  hasError={false}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Used to record the cash side of the payment or receipt
+                </p>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Invoice Allocation Panel */}
+        {showAllocationPanel && selectedContact && (
+          <>
+            <InvoiceAllocationPanel
+              contactId={selectedContact.id}
+              contactType={selectedContact.type}
+              voucherType={watchedVoucherType}
+              currency={baseCurrency}
+              paymentDate={watchedDate}
+              onChange={setAllocations}
+            />
+            {typeMismatchWarning && (
+              <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {typeMismatchWarning}
+              </div>
+            )}
+          </>
+        )}
 
         {/* Line Items Card */}
         <div className="mb-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
@@ -631,7 +809,7 @@ export default function NewVoucherPage() {
             {submitting && (
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
             )}
-            Save as Draft
+            Save & Post
           </button>
         </div>
       </form>

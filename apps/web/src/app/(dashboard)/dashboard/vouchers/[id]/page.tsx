@@ -24,7 +24,6 @@ import {
   Plus,
   Printer,
   RotateCcw,
-  Send,
   Trash2,
   Upload,
   X,
@@ -79,15 +78,17 @@ interface VoucherDetail {
   attachments?: Attachment[];
 }
 
-interface UnpaidInvoice {
+interface ExistingAllocation {
   id: string;
-  voucherNumber: string;
-  voucherType: string;
-  totalAmount: string;
-  date: string;
-  totalPaid: string;
-  remaining: string;
-  status: string;
+  amount: string;
+  paidAt: string;
+  invoiceVoucher: {
+    id: string;
+    voucherNumber: string;
+    voucherType: string;
+    totalAmount: string;
+    date: string;
+  };
 }
 
 function formatFileSize(bytes: number): string {
@@ -518,73 +519,26 @@ function VoucherView({
 
   // Modal states
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
-  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
   const [showReverseConfirm, setShowReverseConfirm] = useState(false);
-  const [showAllocateModal, setShowAllocateModal] = useState(false);
-  const [unpaidInvoices, setUnpaidInvoices] = useState<UnpaidInvoice[]>([]);
-  const [allocAmounts, setAllocAmounts] = useState<Record<string, string>>({});
-  const [allocDates, setAllocDates] = useState<Record<string, string>>({});
-  const [allocSaving, setAllocSaving] = useState(false);
-  const [allocError, setAllocError] = useState('');
-  const [existingAllocTotal, setExistingAllocTotal] = useState(0);
-  const [rejectReason, setRejectReason] = useState('');
+  const [existingAllocations, setExistingAllocations] = useState<ExistingAllocation[]>([]);
 
-  const loadUnpaidInvoices = async () => {
-    if (!voucher.contactId) return;
-    try {
-      const data = await api.get<UnpaidInvoice[]>(`/payment-allocations/unpaid-invoices/${voucher.contactId}`, { paymentType: voucher.voucherType });
-      setUnpaidInvoices(data);
-      const amounts: Record<string, string> = {};
-      const dates: Record<string, string> = {};
-      const now = new Date().toISOString().slice(0, 16);
-      data.forEach((inv) => { amounts[inv.id] = ''; dates[inv.id] = now; });
-      setAllocAmounts(amounts);
-      setAllocDates(dates);
-      setAllocError('');
-      // Load existing allocations for this payment
-      const existing = await api.get<any[]>(`/payment-allocations/payment/${voucher.id}`);
-      const total = existing.reduce((s: number, a: any) => s + parseFloat(a.amount), 0);
-      setExistingAllocTotal(total);
-    } catch { /* ignore */ }
-  };
-
-  const handleAllocateOpen = () => {
-    loadUnpaidInvoices();
-    setShowAllocateModal(true);
-  };
-
-  const handleAllocateSave = async () => {
-    setAllocSaving(true);
-    setAllocError('');
-    try {
-      const allocations = Object.entries(allocAmounts)
-        .filter(([, v]) => v && parseFloat(v) > 0)
-        .map(([invoiceVoucherId, amount]) => ({
-          invoiceVoucherId,
-          amount: parseFloat(amount),
-          paidAt: allocDates[invoiceVoucherId] || new Date().toISOString(),
-        }));
-      if (allocations.length === 0) {
-        setAllocError('Enter at least one allocation amount');
-        setAllocSaving(false);
-        return;
-      }
-      await api.post(`/payment-allocations/${voucher.id}`, { allocations });
-      setShowAllocateModal(false);
-      onRefresh();
-    } catch (err: any) {
-      setAllocError(err?.message || 'Failed to save allocation');
+  useEffect(() => {
+    const canHaveAllocations =
+      voucher.status === 'POSTED' &&
+      (voucher.voucherType === 'RECEIPT' ||
+        voucher.voucherType === 'PAYMENT' ||
+        voucher.voucherType === 'JOURNAL') &&
+      !!voucher.contactId;
+    if (!canHaveAllocations) {
+      setExistingAllocations([]);
+      return;
     }
-    setAllocSaving(false);
-  };
-
-  const allocTotal = Object.values(allocAmounts).reduce((s, v) => s + (parseFloat(v) || 0), 0);
-  const paymentAmount = parseFloat(voucher.totalAmount) || 0;
-  const availableToAllocate = paymentAmount - existingAllocTotal;
-  const allocationExceeds = allocTotal > availableToAllocate + 0.01;
+    api
+      .get<ExistingAllocation[]>(`/payment-allocations/payment/${voucher.id}`)
+      .then((rows) => setExistingAllocations(Array.isArray(rows) ? rows : []))
+      .catch(() => setExistingAllocations([]));
+  }, [voucher.id, voucher.status, voucher.voucherType, voucher.contactId]);
 
   const handleAction = async (action: () => Promise<void>) => {
     setActionLoading(true);
@@ -597,33 +551,11 @@ function VoucherView({
     setActionLoading(false);
   };
 
-  const submitForApproval = () =>
-    handleAction(async () => {
-      await api.post(`/vouchers/${voucher.id}/submit`, {});
-      setShowSubmitConfirm(false);
-      onRefresh();
-    });
-
   const deleteVoucher = () =>
     handleAction(async () => {
       await api.delete(`/vouchers/${voucher.id}`);
       setShowDeleteConfirm(false);
       router.push('/dashboard/vouchers');
-    });
-
-  const approveVoucher = () =>
-    handleAction(async () => {
-      await api.post(`/vouchers/${voucher.id}/approve`, {});
-      setShowApproveConfirm(false);
-      onRefresh();
-    });
-
-  const rejectVoucher = () =>
-    handleAction(async () => {
-      await api.post(`/vouchers/${voucher.id}/reject`, { reason: rejectReason });
-      setShowRejectModal(false);
-      setRejectReason('');
-      onRefresh();
     });
 
   const reverseVoucher = () =>
@@ -682,7 +614,7 @@ function VoucherView({
             Export PDF
           </button>
 
-          {/* DRAFT: Edit, Submit, Delete */}
+          {/* Legacy DRAFT rows (pre-Save&Post era) can still be deleted */}
           {voucher.status === 'DRAFT' && (
             <>
               <button
@@ -693,58 +625,11 @@ function VoucherView({
                 Edit
               </button>
               <button
-                onClick={() => setShowSubmitConfirm(true)}
-                className="flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
-              >
-                <Send className="h-4 w-4" />
-                Submit for Approval
-              </button>
-              <button
                 onClick={() => setShowDeleteConfirm(true)}
                 className="flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
               >
                 <Trash2 className="h-4 w-4" />
                 Delete
-              </button>
-            </>
-          )}
-
-          {/* REJECTED: Edit & Resubmit */}
-          {voucher.status === 'REJECTED' && (
-            <>
-              <button
-                onClick={onEdit}
-                className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                <Pencil className="h-4 w-4" />
-                Edit
-              </button>
-              <button
-                onClick={() => setShowSubmitConfirm(true)}
-                className="flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
-              >
-                <Send className="h-4 w-4" />
-                Resubmit for Approval
-              </button>
-            </>
-          )}
-
-          {/* PENDING_APPROVAL: Approve & Reject (approvers only) */}
-          {voucher.status === 'PENDING_APPROVAL' && canApprove && (
-            <>
-              <button
-                onClick={() => setShowApproveConfirm(true)}
-                className="flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700"
-              >
-                <Check className="h-4 w-4" />
-                Approve
-              </button>
-              <button
-                onClick={() => setShowRejectModal(true)}
-                className="flex items-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-              >
-                <X className="h-4 w-4" />
-                Reject
               </button>
             </>
           )}
@@ -760,18 +645,6 @@ function VoucherView({
             </button>
           )}
 
-          {/* POSTED + RECEIPT/PAYMENT: Allocate Payment */}
-          {voucher.status === 'POSTED' &&
-            (voucher.voucherType === 'RECEIPT' || voucher.voucherType === 'PAYMENT') &&
-            voucher.contactId && (
-              <button
-                onClick={handleAllocateOpen}
-                className="flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
-              >
-                <Check className="h-4 w-4" />
-                Allocate Payment
-              </button>
-            )}
         </div>
       </div>
 
@@ -992,17 +865,6 @@ function VoucherView({
 
       {/* --- Confirmation Modals --- */}
 
-      {/* Submit for Approval */}
-      <ConfirmModal
-        open={showSubmitConfirm}
-        title="Submit for Approval"
-        message={`Submit voucher ${voucher.voucherNumber} for approval? It will no longer be editable until approved or rejected.`}
-        confirmLabel="Submit"
-        onConfirm={submitForApproval}
-        onCancel={() => setShowSubmitConfirm(false)}
-        loading={actionLoading}
-      />
-
       {/* Delete */}
       <ConfirmModal
         open={showDeleteConfirm}
@@ -1015,38 +877,6 @@ function VoucherView({
         loading={actionLoading}
       />
 
-      {/* Approve */}
-      <ConfirmModal
-        open={showApproveConfirm}
-        title="Approve Voucher"
-        message={`Approve voucher ${voucher.voucherNumber}? It will be automatically posted to the journal.`}
-        confirmLabel="Approve & Post"
-        confirmClass="bg-green-600 hover:bg-green-700"
-        onConfirm={approveVoucher}
-        onCancel={() => setShowApproveConfirm(false)}
-        loading={actionLoading}
-      />
-
-      {/* Reject */}
-      <ConfirmModal
-        open={showRejectModal}
-        title="Reject Voucher"
-        message={`Provide a reason for rejecting voucher ${voucher.voucherNumber}.`}
-        confirmLabel="Reject"
-        confirmClass="bg-red-600 hover:bg-red-700"
-        onConfirm={rejectVoucher}
-        onCancel={() => { setShowRejectModal(false); setRejectReason(''); }}
-        loading={actionLoading}
-      >
-        <textarea
-          value={rejectReason}
-          onChange={(e) => setRejectReason(e.target.value)}
-          rows={3}
-          placeholder="Reason for rejection..."
-          className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
-        />
-      </ConfirmModal>
-
       {/* Reverse */}
       <ConfirmModal
         open={showReverseConfirm}
@@ -1058,184 +888,6 @@ function VoucherView({
         onCancel={() => setShowReverseConfirm(false)}
         loading={actionLoading}
       />
-
-      {/* Allocate Payment Modal */}
-      {showAllocateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Allocate Payment</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              {voucher.voucherNumber} — Payment: {formatCurrency(voucher.totalAmount, voucher.currencyCode)}
-            </p>
-
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">Invoice</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Remaining</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium uppercase text-gray-500">Allocate</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium uppercase text-gray-500">
-                      {voucher.voucherType === 'RECEIPT' ? 'Received At' : 'Paid At'}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {unpaidInvoices.filter((inv) => inv.status !== 'SETTLED').length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-3 py-6 text-center text-gray-500">
-                        No unpaid invoices for this contact
-                      </td>
-                    </tr>
-                  ) : (
-                    (() => {
-                      // Group invoices by billingPeriodKey
-                      const unpaid = unpaidInvoices.filter((inv: any) => inv.status !== 'SETTLED');
-                      const groups: Record<string, { label: string; items: any[] }> = {};
-                      unpaid.forEach((inv: any) => {
-                        const key = inv.billingPeriodKey || 'ungrouped';
-                        if (!groups[key]) groups[key] = { label: inv.billingPeriodLabel || 'No billing period', items: [] };
-                        groups[key].items.push(inv);
-                      });
-
-                      const rows: JSX.Element[] = [];
-                      Object.entries(groups).forEach(([key, group]) => {
-                        const periodRemaining = group.items.reduce((s, i) => s + parseFloat(i.remaining), 0);
-                        const periodAllocated = group.items.reduce((s, i) => s + (parseFloat(allocAmounts[i.id] || '0') || 0), 0);
-
-                        // Period header with bulk allocate input
-                        rows.push(
-                          <tr key={`hdr-${key}`} className="bg-blue-50">
-                            <td colSpan={2} className="px-3 py-2 text-xs font-semibold text-blue-900 uppercase">
-                              📅 Billing Period: {group.label}
-                            </td>
-                            <td className="px-3 py-2 text-right text-sm font-medium text-blue-900">
-                              {formatCurrency(periodRemaining.toFixed(2), voucher.currencyCode)}
-                            </td>
-                            <td className="px-3 py-2">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                placeholder="Allocate to period"
-                                onBlur={(e) => {
-                                  const raw = e.target.value.replace(/[^0-9.]/g, '');
-                                  const amt = parseFloat(raw) || 0;
-                                  if (amt === 0) return;
-                                  // Auto-distribute across invoices in this period
-                                  let remaining = amt;
-                                  const updates: Record<string, string> = {};
-                                  for (const item of group.items) {
-                                    const inv_rem = parseFloat(item.remaining);
-                                    if (remaining <= 0) { updates[item.id] = ''; continue; }
-                                    const take = Math.min(remaining, inv_rem);
-                                    updates[item.id] = take.toFixed(2);
-                                    remaining -= take;
-                                  }
-                                  setAllocAmounts((p) => ({ ...p, ...updates }));
-                                  e.target.value = '';
-                                }}
-                                className="w-28 rounded-md border border-blue-300 px-2 py-1 text-right text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-xs text-blue-700">
-                              Allocated: {formatCurrency(periodAllocated.toFixed(2), voucher.currencyCode)}
-                            </td>
-                          </tr>
-                        );
-
-                        // Individual invoices in this period
-                        group.items.forEach((inv) => {
-                          rows.push(
-                            <tr key={inv.id}>
-                              <td className="px-3 py-2 pl-6">
-                                <div className="font-mono text-gray-700 text-xs">{inv.voucherNumber}</div>
-                                <div className="text-xs text-gray-400">{inv.date}</div>
-                              </td>
-                              <td className="px-3 py-2 text-right text-gray-900">
-                                {formatCurrency(inv.totalAmount, voucher.currencyCode)}
-                              </td>
-                              <td className="px-3 py-2 text-right text-gray-600">
-                                {formatCurrency(inv.remaining, voucher.currencyCode)}
-                              </td>
-                              <td className="px-3 py-2">
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={allocAmounts[inv.id] || ''}
-                                  onChange={(e) => {
-                                    const val = e.target.value.replace(/[^0-9.]/g, '');
-                                    setAllocAmounts((p) => ({ ...p, [inv.id]: val }));
-                                  }}
-                                  placeholder="0.00"
-                                  className="w-24 rounded-md border border-gray-200 px-2 py-1 text-right text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-                                />
-                              </td>
-                              <td className="px-3 py-2">
-                                <input
-                                  type="datetime-local"
-                                  value={allocDates[inv.id] || ''}
-                                  onChange={(e) => setAllocDates((p) => ({ ...p, [inv.id]: e.target.value }))}
-                                  className="rounded-md border border-gray-200 px-2 py-1 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-                                />
-                              </td>
-                            </tr>
-                          );
-                        });
-                      });
-                      return rows;
-                    })()
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="mt-4 flex flex-col gap-1 border-t border-gray-200 pt-4 text-sm">
-              <div>
-                <span className="text-gray-500">Payment Total:</span>{' '}
-                <span className="font-medium">{formatCurrency(voucher.totalAmount, voucher.currencyCode)}</span>
-                {existingAllocTotal > 0 && (
-                  <>
-                    <span className="mx-2 text-gray-300">|</span>
-                    <span className="text-gray-500">Previously Allocated:</span>{' '}
-                    <span className="font-medium">{formatCurrency(existingAllocTotal.toFixed(2), voucher.currencyCode)}</span>
-                  </>
-                )}
-                <span className="mx-2 text-gray-300">|</span>
-                <span className="text-gray-500">Available:</span>{' '}
-                <span className="font-medium">{formatCurrency(availableToAllocate.toFixed(2), voucher.currencyCode)}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">New Allocation:</span>{' '}
-                <span className={cn('font-medium', allocationExceeds ? 'text-red-600' : 'text-gray-900')}>
-                  {formatCurrency(allocTotal.toFixed(2), voucher.currencyCode)}
-                </span>
-                <span className="mx-2 text-gray-300">|</span>
-                <span className="text-gray-500">Remaining After:</span>{' '}
-                <span className="font-medium">{formatCurrency((availableToAllocate - allocTotal).toFixed(2), voucher.currencyCode)}</span>
-              </div>
-            </div>
-
-            {allocError && <p className="mt-2 text-sm text-red-600">{allocError}</p>}
-
-            <div className="mt-4 flex justify-end gap-3">
-              <button
-                onClick={() => setShowAllocateModal(false)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAllocateSave}
-                disabled={allocSaving || allocationExceeds}
-                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-              >
-                {allocSaving ? 'Saving...' : 'Save Allocation'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Attachment Preview */}
       <AttachmentPreviewModal

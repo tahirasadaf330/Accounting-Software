@@ -20,6 +20,7 @@ import { Role } from '@prisma/client';
 import * as fs from 'fs';
 import { VouchersService } from './vouchers.service';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
+import { CreateVoucherWithAllocationsDto } from './dto/create-voucher-with-allocations.dto';
 import { UpdateVoucherDto } from './dto/update-voucher.dto';
 import { VoucherFilterDto } from './dto/voucher-filter.dto';
 import { RejectVoucherDto } from './dto/reject-voucher.dto';
@@ -34,8 +35,8 @@ export class VouchersController {
   constructor(private readonly vouchersService: VouchersService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new voucher' })
-  @ApiResponse({ status: 201, description: 'Voucher created successfully' })
+  @ApiOperation({ summary: 'Create a new voucher (auto-posted)' })
+  @ApiResponse({ status: 201, description: 'Voucher created and posted' })
   @ApiResponse({ status: 400, description: 'Validation error (double-entry, accounts, etc.)' })
   async create(
     @TenantId() tenantId: string,
@@ -43,6 +44,24 @@ export class VouchersController {
     @Body() dto: CreateVoucherDto,
   ) {
     return this.vouchersService.create(tenantId, userId, dto);
+  }
+
+  @Post('with-allocations')
+  @ApiOperation({
+    summary:
+      'Create a voucher and its payment allocations atomically (auto-posted)',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Voucher created, posted, and allocations recorded',
+  })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  async createWithAllocations(
+    @TenantId() tenantId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateVoucherWithAllocationsDto,
+  ) {
+    return this.vouchersService.createWithAllocations(tenantId, userId, dto);
   }
 
   @Get()

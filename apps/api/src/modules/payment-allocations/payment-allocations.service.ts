@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AllocatePaymentDto } from './dto/allocate-payment.dto';
 import { Prisma, VoucherType, VoucherStatus } from '@prisma/client';
+import { computeBillingPeriod } from '../../common/utils/billing-period';
 
 @Injectable()
 export class PaymentAllocationsService {
@@ -20,48 +21,82 @@ export class PaymentAllocationsService {
       throw new NotFoundException('Payment voucher not found or not posted');
     }
 
-    // Validate it's a payment type (RECEIPT or PAYMENT)
-    if (payment.voucherType !== VoucherType.RECEIPT && payment.voucherType !== VoucherType.PAYMENT) {
-      throw new BadRequestException('Voucher is not a payment/receipt type');
-    }
-
-    // Get existing allocations for this payment
-    const existingAllocations = await this.prisma.paymentAllocation.findMany({
-      where: { tenantId, paymentVoucherId },
-    });
-    const existingTotal = existingAllocations.reduce(
-      (sum, a) => sum.plus(a.amount),
-      new Prisma.Decimal(0),
+    return this.prisma.$transaction((tx) =>
+      this.validateAndCreateAllocations(
+        tx,
+        tenantId,
+        {
+          id: payment.id,
+          contactId: payment.contactId,
+          voucherType: payment.voucherType,
+          voucherNumber: payment.voucherNumber,
+          totalAmount: payment.totalAmount,
+        },
+        dto.allocations,
+      ),
     );
+  }
 
-    // Calculate new allocation total
-    const newTotal = dto.allocations.reduce(
-      (sum, a) => sum + a.amount,
-      0,
-    );
-
-    // Check total doesn't exceed payment amount (with small tolerance for floating-point)
-    const totalAllocated = existingTotal.toNumber() + newTotal;
-    if (totalAllocated > payment.totalAmount.toNumber() + 0.01) {
+  /**
+   * Validate + create payment allocations against an already-persisted payment
+   * voucher inside an existing transaction. Reused by `allocate` (post-hoc)
+   * and by `VouchersService.createWithAllocations` (inline on voucher create).
+   */
+  async validateAndCreateAllocations(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    payment: {
+      id: string;
+      contactId: string | null;
+      voucherType: VoucherType;
+      voucherNumber: string;
+      totalAmount: Prisma.Decimal;
+    },
+    allocations: { invoiceVoucherId: string; amount: number; paidAt: string }[],
+  ) {
+    if (
+      payment.voucherType !== VoucherType.RECEIPT &&
+      payment.voucherType !== VoucherType.PAYMENT &&
+      payment.voucherType !== VoucherType.JOURNAL
+    ) {
       throw new BadRequestException(
-        `Total allocation ($${totalAllocated.toFixed(2)}) exceeds payment amount ($${payment.totalAmount.toFixed(2)})`,
+        'Only Receipt, Payment, or Journal vouchers can have allocations',
       );
     }
 
-    // Validate each invoice exists and belongs to same contact
-    for (const line of dto.allocations) {
-      const invoice = await this.prisma.voucher.findFirst({
-        where: { id: line.invoiceVoucherId, tenantId, status: VoucherStatus.POSTED },
+    if (!payment.contactId) {
+      throw new BadRequestException(
+        'Allocations require a contact on the payment voucher',
+      );
+    }
+
+    // Load each invoice once, validate same contact + remaining balance, and
+    // classify each allocation as receivable-side (SALES) or payable-side
+    // (PURCHASE). The voucher-total cap is enforced per side so that a
+    // netting journal (BOTH contact) can clear both a receivable and a
+    // payable in one voucher without the sides cancelling out the cap.
+    let salesAllocated = 0;
+    let purchaseAllocated = 0;
+    for (const line of allocations) {
+      const invoice = await tx.voucher.findFirst({
+        where: {
+          id: line.invoiceVoucherId,
+          tenantId,
+          status: VoucherStatus.POSTED,
+        },
       });
       if (!invoice) {
-        throw new NotFoundException(`Invoice voucher ${line.invoiceVoucherId} not found or not posted`);
+        throw new NotFoundException(
+          `Invoice voucher ${line.invoiceVoucherId} not found or not posted`,
+        );
       }
       if (invoice.contactId !== payment.contactId) {
-        throw new BadRequestException('Invoice and payment must belong to the same contact');
+        throw new BadRequestException(
+          'Invoice and payment must belong to the same contact',
+        );
       }
 
-      // Check allocation doesn't exceed invoice remaining
-      const invoiceAllocations = await this.prisma.paymentAllocation.aggregate({
+      const invoiceAllocations = await tx.paymentAllocation.aggregate({
         where: { tenantId, invoiceVoucherId: line.invoiceVoucherId },
         _sum: { amount: true },
       });
@@ -73,24 +108,46 @@ export class PaymentAllocationsService {
           `Allocation of $${line.amount.toFixed(2)} exceeds remaining $${remaining.toFixed(2)} for invoice ${invoice.voucherNumber}`,
         );
       }
+
+      if (invoice.voucherType === VoucherType.SALES) salesAllocated += line.amount;
+      else if (invoice.voucherType === VoucherType.PURCHASE) purchaseAllocated += line.amount;
     }
 
-    // Create allocations
-    const created = await this.prisma.$transaction(
-      dto.allocations
-        .filter((a) => a.amount > 0)
-        .map((a) =>
-          this.prisma.paymentAllocation.create({
-            data: {
-              tenantId,
-              paymentVoucherId,
-              invoiceVoucherId: a.invoiceVoucherId,
-              amount: new Prisma.Decimal(a.amount.toFixed(4)),
-              paidAt: new Date(a.paidAt),
-            },
-          }),
-        ),
-    );
+    const existing = await tx.paymentAllocation.findMany({
+      where: { tenantId, paymentVoucherId: payment.id },
+      include: { invoiceVoucher: { select: { voucherType: true } } },
+    });
+    for (const row of existing) {
+      const t = row.invoiceVoucher.voucherType;
+      if (t === VoucherType.SALES) salesAllocated += row.amount.toNumber();
+      else if (t === VoucherType.PURCHASE) purchaseAllocated += row.amount.toNumber();
+    }
+
+    const cap = payment.totalAmount.toNumber() + 0.01;
+    if (salesAllocated > cap) {
+      throw new BadRequestException(
+        `Total sales allocation ($${salesAllocated.toFixed(2)}) exceeds voucher amount ($${payment.totalAmount.toFixed(2)})`,
+      );
+    }
+    if (purchaseAllocated > cap) {
+      throw new BadRequestException(
+        `Total purchase allocation ($${purchaseAllocated.toFixed(2)}) exceeds voucher amount ($${payment.totalAmount.toFixed(2)})`,
+      );
+    }
+
+    const created = [];
+    for (const a of allocations.filter((x) => x.amount > 0)) {
+      const row = await tx.paymentAllocation.create({
+        data: {
+          tenantId,
+          paymentVoucherId: payment.id,
+          invoiceVoucherId: a.invoiceVoucherId,
+          amount: new Prisma.Decimal(a.amount.toFixed(4)),
+          paidAt: new Date(a.paidAt),
+        },
+      });
+      created.push(row);
+    }
 
     return created;
   }
@@ -149,21 +206,6 @@ export class PaymentAllocationsService {
     const billingStart = contact?.billingStartDate ? new Date(contact.billingStartDate) : null;
     const termDays = contact?.paymentTermDays || 30;
 
-    const computeBillingPeriod = (invoiceDate: Date): { key: string; label: string; start: string; end: string } | null => {
-      if (!billingStart) return null;
-      const msPerDay = 86400000;
-      const diffDays = Math.floor((invoiceDate.getTime() - billingStart.getTime()) / msPerDay);
-      if (diffDays < 0) return null;
-      const periodIndex = Math.floor(diffDays / termDays);
-      const periodStart = new Date(billingStart);
-      periodStart.setDate(periodStart.getDate() + periodIndex * termDays);
-      const periodEnd = new Date(periodStart);
-      periodEnd.setDate(periodEnd.getDate() + termDays - 1);
-      const startStr = periodStart.toISOString().split('T')[0];
-      const endStr = periodEnd.toISOString().split('T')[0];
-      return { key: startStr, label: `${startStr} — ${endStr}`, start: startStr, end: endStr };
-    };
-
     return invoices.map((inv) => {
       const totalPaid = inv.invoiceAllocations.reduce(
         (sum, a) => sum + a.amount.toNumber(),
@@ -171,7 +213,7 @@ export class PaymentAllocationsService {
       );
       const remaining = inv.totalAmount.toNumber() - totalPaid;
       const status = remaining <= 0 ? 'SETTLED' : totalPaid > 0 ? 'PARTIAL' : 'UNPAID';
-      const billingPeriod = computeBillingPeriod(inv.date as Date);
+      const billingPeriod = computeBillingPeriod(inv.date as Date, billingStart, termDays);
 
       return {
         id: inv.id,
