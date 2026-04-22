@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
 
@@ -61,6 +61,9 @@ export default function NettingCyclesPage() {
   // Create cycle modal
   const [showCreate, setShowCreate] = useState(false);
   const [createContactId, setCreateContactId] = useState('');
+  const [contactSearch, setContactSearch] = useState('');
+  const [showContactDropdown, setShowContactDropdown] = useState(false);
+  const contactDropdownRef = useRef<HTMLDivElement>(null);
   const [createStartDate, setCreateStartDate] = useState('');
   const [createEndDate, setCreateEndDate] = useState('');
   const [creating, setCreating] = useState(false);
@@ -109,6 +112,16 @@ export default function NettingCyclesPage() {
   useEffect(() => {
     loadCycles();
   }, [contactFilter, statusFilter]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (contactDropdownRef.current && !contactDropdownRef.current.contains(e.target as Node)) {
+        setShowContactDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // Auto-calculate end date when contact and start date are set
   useEffect(() => {
@@ -163,6 +176,7 @@ export default function NettingCyclesPage() {
       });
       setShowCreate(false);
       setCreateContactId('');
+      setContactSearch('');
       setCreateStartDate('');
       setCreateEndDate('');
       setAvailableInvoices([]);
@@ -173,6 +187,16 @@ export default function NettingCyclesPage() {
     }
     setCreating(false);
   };
+
+  const selectedInvoices = availableInvoices.filter((inv) => selectedInvoiceIds.includes(inv.id));
+  const totalReceivable = selectedInvoices
+    .filter((inv) => inv.voucherType === 'SALES')
+    .reduce((sum, inv) => sum + parseFloat(inv.remaining || '0'), 0);
+  const totalPayable = selectedInvoices
+    .filter((inv) => inv.voucherType === 'PURCHASE')
+    .reduce((sum, inv) => sum + parseFloat(inv.remaining || '0'), 0);
+  const netAmount = totalReceivable - totalPayable;
+  const netNature = netAmount > 0 ? 'Receivable' : netAmount < 0 ? 'Payable' : 'Settled';
 
   return (
     <div>
@@ -302,16 +326,52 @@ export default function NettingCyclesPage() {
             <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Contact *</label>
-                <select
-                  value={createContactId}
-                  onChange={(e) => setCreateContactId(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Select contact</option>
-                  {contacts.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <div ref={contactDropdownRef} className="relative">
+                  <div
+                    className="flex w-full cursor-pointer items-center justify-between rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    onClick={() => setShowContactDropdown((v) => !v)}
+                  >
+                    <span className={createContactId ? 'text-gray-900' : 'text-gray-400'}>
+                      {createContactId ? contacts.find((c) => c.id === createContactId)?.name : 'Select contact'}
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+                  </div>
+                  {showContactDropdown && (
+                    <div className="absolute z-10 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg">
+                      <div className="p-2 border-b border-gray-100">
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Search contacts..."
+                          value={contactSearch}
+                          onChange={(e) => setContactSearch(e.target.value)}
+                          className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                      <ul className="max-h-48 overflow-y-auto py-1">
+                        {contacts
+                          .filter((c) => c.name.toLowerCase().includes(contactSearch.toLowerCase()))
+                          .map((c) => (
+                            <li
+                              key={c.id}
+                              onClick={() => {
+                                setCreateContactId(c.id);
+                                setContactSearch('');
+                                setShowContactDropdown(false);
+                              }}
+                              className={`cursor-pointer px-3 py-2 text-sm hover:bg-gray-50 ${createContactId === c.id ? 'bg-primary-50 text-primary-700 font-medium' : 'text-gray-900'}`}
+                            >
+                              {c.name}
+                            </li>
+                          ))}
+                        {contacts.filter((c) => c.name.toLowerCase().includes(contactSearch.toLowerCase())).length === 0 && (
+                          <li className="px-3 py-2 text-sm text-gray-400">No contacts found</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -378,6 +438,33 @@ export default function NettingCyclesPage() {
                     <button type="button" onClick={() => setSelectedInvoiceIds(availableInvoices.map((i: any) => i.id))} className="text-xs text-primary-600 hover:underline">Select All</button>
                     <button type="button" onClick={() => setSelectedInvoiceIds([])} className="text-xs text-gray-500 hover:underline">Clear All</button>
                   </div>
+                  {selectedInvoiceIds.length > 0 && (
+                    <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span>Total Receivable</span>
+                        <span className="font-medium text-green-600">{fmt(totalReceivable)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span>Total Payable</span>
+                        <span className="font-medium text-red-600">{fmt(totalPayable)}</span>
+                      </div>
+                      <div className="border-t border-gray-200 pt-1.5 flex items-center justify-between text-sm font-semibold text-gray-900">
+                        <span>Net Total</span>
+                        <span className="flex items-center gap-2">
+                          {fmt(Math.abs(netAmount))}
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                            netNature === 'Receivable'
+                              ? 'bg-green-50 text-green-700 ring-1 ring-green-600/20'
+                              : netNature === 'Payable'
+                              ? 'bg-red-50 text-red-700 ring-1 ring-red-600/20'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {netNature}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {loadingInvoices && (
@@ -393,7 +480,7 @@ export default function NettingCyclesPage() {
               {createError && <p className="text-sm text-red-600">{createError}</p>}
               <div className="flex justify-end gap-3">
                 <button
-                  onClick={() => { setShowCreate(false); setCreateError(''); }}
+                  onClick={() => { setShowCreate(false); setCreateError(''); setContactSearch(''); }}
                   className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   Cancel

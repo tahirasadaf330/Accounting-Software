@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
 import { ArrowLeft, ChevronDown, Plus, Trash2 } from 'lucide-react';
+import ContactSelector from '../invoice/ContactSelector';
 import InvoiceAllocationPanel, {
   AllocationSelection,
 } from './InvoiceAllocationPanel';
@@ -570,18 +571,13 @@ export default function NewVoucherPage() {
             {/* Contact selector */}
             <div className="sm:col-span-2">
               <label className="mb-1 block text-sm font-medium text-gray-700">Contact</label>
-              <select
+              <ContactSelector
+                contacts={contacts}
                 value={selectedContactId}
-                onChange={(e) => handleContactChange(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
-              >
-                <option value="">Select contact (optional)</option>
-                {contacts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}{c.accountCode ? ` (${c.accountCode})` : ''}
-                  </option>
-                ))}
-              </select>
+                onChange={handleContactChange}
+                filterTypes={['CUSTOMER', 'VENDOR', 'BOTH']}
+                placeholder="Search contact (optional)..."
+              />
               <p className="mt-1 text-xs text-gray-500">
                 Selecting a contact will auto-populate their trade account in line items
               </p>
