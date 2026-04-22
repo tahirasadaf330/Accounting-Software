@@ -12,8 +12,10 @@ import { VoucherStatus, VoucherType, Prisma } from '@prisma/client';
 import { VOUCHER_TYPE_PREFIX } from '@accounting-saas/shared';
 import { VOUCHER_EVENTS } from '../notifications/events/voucher-events';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
+import { CreateVoucherWithAllocationsDto } from './dto/create-voucher-with-allocations.dto';
 import { UpdateVoucherDto } from './dto/update-voucher.dto';
 import { VoucherFilterDto } from './dto/voucher-filter.dto';
+import { PaymentAllocationsService } from '../payment-allocations/payment-allocations.service';
 import {
   toDecimal,
   sumDecimals,
@@ -49,6 +51,7 @@ export class VouchersService {
   constructor(
     private prisma: PrismaService,
     private eventEmitter: EventEmitter2,
+    private paymentAllocations: PaymentAllocationsService,
   ) {}
 
   /**
@@ -165,7 +168,90 @@ export class VouchersService {
   }
 
   /**
-   * Create a new voucher with line items.
+   * Create a journal entry for a voucher (helper used by create + post).
+   * Assumes caller has already checked no existing entry exists.
+   */
+  private async createJournalEntryForVoucher(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    voucher: {
+      id: string;
+      date: Date;
+      narration: string;
+      lineItems: {
+        accountId: string;
+        debit: Prisma.Decimal;
+        credit: Prisma.Decimal;
+        baseDebit: Prisma.Decimal;
+        baseCredit: Prisma.Decimal;
+        currencyCode: string;
+        exchangeRate: Prisma.Decimal;
+        narration: string | null;
+        lineOrder: number;
+      }[];
+    },
+  ) {
+    const entryDate = voucher.date;
+    const year = entryDate.getFullYear();
+    const month = String(entryDate.getMonth() + 1).padStart(2, '0');
+    const entryPrefix = `JE-${year}${month}-`;
+
+    const lastEntry = await tx.journalEntry.findFirst({
+      where: {
+        tenantId,
+        entryNumber: { startsWith: entryPrefix },
+      },
+      orderBy: { entryNumber: 'desc' },
+      select: { entryNumber: true },
+    });
+
+    let entrySequence = 1;
+    if (lastEntry) {
+      const lastSeq = parseInt(
+        lastEntry.entryNumber.slice(entryPrefix.length),
+        10,
+      );
+      if (!isNaN(lastSeq)) {
+        entrySequence = lastSeq + 1;
+      }
+    }
+
+    const entryNumber = `${entryPrefix}${String(entrySequence).padStart(4, '0')}`;
+
+    const journalLines = voucher.lineItems.map((li) => ({
+      tenantId,
+      accountId: li.accountId,
+      debit: li.debit,
+      credit: li.credit,
+      baseCurrencyDebit: li.baseDebit,
+      baseCurrencyCredit: li.baseCredit,
+      currencyCode: li.currencyCode,
+      exchangeRate: li.exchangeRate,
+      narration: li.narration,
+      lineOrder: li.lineOrder,
+    }));
+
+    return tx.journalEntry.create({
+      data: {
+        tenantId,
+        voucherId: voucher.id,
+        entryNumber,
+        entryDate: voucher.date,
+        narration: voucher.narration,
+        isReversing: false,
+        lines: {
+          createMany: {
+            data: journalLines,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Create a new voucher with line items, directly as POSTED.
+   * The approval pipeline (DRAFT → PENDING_APPROVAL → APPROVED → POSTED) has
+   * been removed: every new voucher is posted in one atomic transaction.
    */
   async create(tenantId: string, userId: string, dto: CreateVoucherDto) {
     const { totalDebits } = this.validateDoubleEntry(dto.lineItems);
@@ -174,11 +260,9 @@ export class VouchersService {
     const voucherExchangeRate = dto.exchangeRate || '1';
 
     return this.prisma.$transaction(async (tx) => {
-      // Validate all referenced accounts
       const accountIds = dto.lineItems.map((li) => li.accountId);
       await this.validateAccounts(tenantId, accountIds, tx);
 
-      // Generate voucher number
       const voucherNumber = await this.generateVoucherNumber(
         tenantId,
         dto.voucherType,
@@ -186,7 +270,6 @@ export class VouchersService {
         tx,
       );
 
-      // Build line items data
       const lineItemsData = dto.lineItems.map((li, index) => {
         const lineExchangeRate = li.exchangeRate || voucherExchangeRate;
         const debit = toDecimal(li.debit);
@@ -211,13 +294,13 @@ export class VouchersService {
         };
       });
 
-      // Create voucher with line items
+      const now = new Date();
       const voucher = await tx.voucher.create({
         data: {
           tenantId,
           voucherNumber,
           voucherType: dto.voucherType,
-          status: VoucherStatus.DRAFT,
+          status: VoucherStatus.POSTED,
           date: voucherDate,
           narration: dto.narration,
           reference: dto.reference || null,
@@ -227,6 +310,8 @@ export class VouchersService {
             toDecimal(voucherExchangeRate).toFixed(8),
           ),
           createdById: userId,
+          approvedById: userId,
+          postedAt: now,
           contactId: dto.contactId || null,
           periodStart: dto.periodStart ? new Date(dto.periodStart) : undefined,
           periodEnd: dto.periodEnd ? new Date(dto.periodEnd) : undefined,
@@ -238,15 +323,166 @@ export class VouchersService {
         },
         include: {
           lineItems: {
+            orderBy: { lineOrder: 'asc' },
+          },
+        },
+      });
+
+      await this.createJournalEntryForVoucher(tx, tenantId, voucher);
+
+      return tx.voucher.findUnique({
+        where: { id: voucher.id },
+        include: {
+          lineItems: {
             include: { account: { select: { id: true, code: true, name: true } } },
             orderBy: { lineOrder: 'asc' },
           },
           createdBy: { select: { id: true, firstName: true, lastName: true } },
           approvedBy: { select: { id: true, firstName: true, lastName: true } },
+          journalEntry: {
+            include: {
+              lines: {
+                include: { account: { select: { id: true, code: true, name: true } } },
+                orderBy: { lineOrder: 'asc' },
+              },
+            },
+          },
+        },
+      });
+    });
+  }
+
+  /**
+   * Create a voucher AND its payment allocations in a single atomic
+   * transaction. Used by the new inline-allocation flow on the New Voucher
+   * page. If any step fails (validation, cross-contact invoice, over-
+   * allocation), the whole transaction is rolled back so no orphan voucher,
+   * journal entry, or allocation is left behind.
+   */
+  async createWithAllocations(
+    tenantId: string,
+    userId: string,
+    dto: CreateVoucherWithAllocationsDto,
+  ) {
+    const { voucher: voucherDto, allocations } = dto;
+    const { totalDebits } = this.validateDoubleEntry(voucherDto.lineItems);
+
+    if (!voucherDto.contactId) {
+      throw new BadRequestException(
+        'contactId is required when creating a voucher with allocations',
+      );
+    }
+
+    const voucherDate = new Date(voucherDto.date);
+    const voucherExchangeRate = voucherDto.exchangeRate || '1';
+
+    return this.prisma.$transaction(async (tx) => {
+      const accountIds = voucherDto.lineItems.map((li) => li.accountId);
+      await this.validateAccounts(tenantId, accountIds, tx);
+
+      const voucherNumber = await this.generateVoucherNumber(
+        tenantId,
+        voucherDto.voucherType,
+        voucherDate,
+        tx,
+      );
+
+      const lineItemsData = voucherDto.lineItems.map((li, index) => {
+        const lineExchangeRate = li.exchangeRate || voucherExchangeRate;
+        const debit = toDecimal(li.debit);
+        const credit = toDecimal(li.credit);
+        const baseDebit = convertCurrency(debit, lineExchangeRate);
+        const baseCredit = convertCurrency(credit, lineExchangeRate);
+
+        return {
+          tenantId,
+          accountId: li.accountId,
+          debit: new Prisma.Decimal(debit.toFixed(4)),
+          credit: new Prisma.Decimal(credit.toFixed(4)),
+          currencyCode: li.currencyCode || voucherDto.currencyCode || 'USD',
+          exchangeRate: new Prisma.Decimal(
+            toDecimal(lineExchangeRate).toFixed(8),
+          ),
+          baseDebit: new Prisma.Decimal(baseDebit.toFixed(4)),
+          baseCredit: new Prisma.Decimal(baseCredit.toFixed(4)),
+          narration: li.narration || null,
+          costCenter: li.costCenter || null,
+          lineOrder: index + 1,
+        };
+      });
+
+      const now = new Date();
+      const voucher = await tx.voucher.create({
+        data: {
+          tenantId,
+          voucherNumber,
+          voucherType: voucherDto.voucherType,
+          status: VoucherStatus.POSTED,
+          date: voucherDate,
+          narration: voucherDto.narration,
+          reference: voucherDto.reference || null,
+          totalAmount: new Prisma.Decimal(totalDebits.toFixed(4)),
+          currencyCode: voucherDto.currencyCode || 'USD',
+          exchangeRate: new Prisma.Decimal(
+            toDecimal(voucherExchangeRate).toFixed(8),
+          ),
+          createdById: userId,
+          approvedById: userId,
+          postedAt: now,
+          contactId: voucherDto.contactId,
+          periodStart: voucherDto.periodStart
+            ? new Date(voucherDto.periodStart)
+            : undefined,
+          periodEnd: voucherDto.periodEnd
+            ? new Date(voucherDto.periodEnd)
+            : undefined,
+          lineItems: {
+            createMany: {
+              data: lineItemsData,
+            },
+          },
+        },
+        include: {
+          lineItems: {
+            orderBy: { lineOrder: 'asc' },
+          },
         },
       });
 
-      return voucher;
+      await this.createJournalEntryForVoucher(tx, tenantId, voucher);
+
+      await this.paymentAllocations.validateAndCreateAllocations(
+        tx,
+        tenantId,
+        {
+          id: voucher.id,
+          contactId: voucher.contactId,
+          voucherType: voucher.voucherType,
+          voucherNumber: voucher.voucherNumber,
+          totalAmount: voucher.totalAmount,
+        },
+        allocations,
+      );
+
+      return tx.voucher.findUnique({
+        where: { id: voucher.id },
+        include: {
+          lineItems: {
+            include: { account: { select: { id: true, code: true, name: true } } },
+            orderBy: { lineOrder: 'asc' },
+          },
+          createdBy: { select: { id: true, firstName: true, lastName: true } },
+          approvedBy: { select: { id: true, firstName: true, lastName: true } },
+          journalEntry: {
+            include: {
+              lines: {
+                include: { account: { select: { id: true, code: true, name: true } } },
+                orderBy: { lineOrder: 'asc' },
+              },
+            },
+          },
+        },
+      });
     });
   }
 

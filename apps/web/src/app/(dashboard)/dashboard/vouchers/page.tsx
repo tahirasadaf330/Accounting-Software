@@ -157,7 +157,7 @@ export default function VouchersPage() {
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex flex-wrap gap-2">
-          {['', 'DRAFT', 'PENDING_APPROVAL', 'POSTED', 'REJECTED', 'REVERSED'].map((s) => (
+          {['', 'POSTED', 'REVERSED'].map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
