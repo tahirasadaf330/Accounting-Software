@@ -311,7 +311,7 @@ export default function NewVoucherPage() {
   useEffect(() => {
     const type = searchParams.get('type');
     if (type) setValue('voucherType', type as any);
-  }, []);
+  }, [searchParams, setValue]);
 
   useEffect(() => {
     loadAccounts();

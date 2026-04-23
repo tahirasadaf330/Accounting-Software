@@ -27,6 +27,13 @@ import {
   ChevronDown,
   Receipt,
   ShoppingCart,
+  CreditCard,
+  Wallet,
+  Scale,
+  Table,
+  TrendingUp,
+  ScrollText,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface NavItem {
@@ -48,13 +55,26 @@ const navigation: NavItem[] = [
     children: [
       { name: 'Sales Invoice', href: '/dashboard/vouchers/sales-invoice', icon: Receipt },
       { name: 'Purchase Invoice', href: '/dashboard/vouchers/purchase-invoice', icon: ShoppingCart },
+      { name: 'Payment Voucher', href: '/dashboard/vouchers/new?type=PAYMENT', icon: CreditCard },
+      { name: 'Receipt Voucher', href: '/dashboard/vouchers/new?type=RECEIPT', icon: Wallet },
     ],
   },
   { name: 'Invoice Netting', href: '/dashboard/netting-cycles', icon: ArrowLeftRight },
   { name: 'Journal Entries', href: '/dashboard/journal', icon: ArrowLeftRight },
   { name: 'Bank Reconciliation', href: '/dashboard/bank', icon: Landmark },
-  { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
-  { name: 'Netting Report', href: '/dashboard/reports/netting', icon: BarChart3 },
+  {
+    name: 'Reports',
+    href: '/dashboard/reports',
+    icon: BarChart3,
+    children: [
+      { name: 'Trial Balance', href: '/dashboard/reports?report=trial-balance', icon: Scale },
+      { name: 'Balance Sheet', href: '/dashboard/reports?report=balance-sheet', icon: Table },
+      { name: 'Income Statement', href: '/dashboard/reports?report=income-statement', icon: TrendingUp },
+      { name: 'Statement of Account', href: '/dashboard/reports?report=statement-of-account', icon: ScrollText },
+      { name: 'Invoice Report', href: '/dashboard/reports?report=invoice-report', icon: FileSpreadsheet },
+      { name: 'Netting Report', href: '/dashboard/reports/netting', icon: ArrowLeftRight },
+    ],
+  },
   { name: 'Currencies', href: '/dashboard/currencies', icon: DollarSign },
   { name: 'Fiscal Years', href: '/dashboard/fiscal-years', icon: Calendar },
   { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
@@ -68,7 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { isAuthenticated, user, tenant, logout, _hasHydrated } = useAuthStore();
   const resetNotifications = useNotificationStore((s) => s.reset);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<string[]>(['Vouchers']);
+  const [expandedSections, setExpandedSections] = useState<string[]>(['Vouchers', 'Reports']);
 
   const toggleSection = (name: string) => {
     setExpandedSections((prev) =>

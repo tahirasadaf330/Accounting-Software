@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { BarChart3, ChevronDown, Printer, Download, FileSpreadsheet } from 'lucide-react';
 import { cn } from '@/lib/cn';
@@ -176,6 +177,7 @@ function ContactCombobox({
 }
 
 export default function ReportsPage() {
+  const searchParams = useSearchParams();
   const tenant = useAuthStore((s) => s.tenant);
   const baseCurrency = tenant?.baseCurrency ?? 'USD';
   const [activeReport, setActiveReport] = useState<ReportType>('trial-balance');
@@ -195,8 +197,26 @@ export default function ReportsPage() {
     periodStart: '',
     periodEnd: '',
   });
+  const reports = [
+    { id: 'trial-balance' as const, name: 'Trial Balance' },
+    { id: 'balance-sheet' as const, name: 'Balance Sheet' },
+    { id: 'income-statement' as const, name: 'Income Statement' },
+    { id: 'statement-of-account' as const, name: 'Statement of Account' },
+    { id: 'invoice-report' as const, name: 'Invoice Report' },
+  ];
+
   const { printRef, handlePrint, handleExportPdf, isExporting } = useReportPrintPdf(activeReport);
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+
+  useEffect(() => {
+    const report = searchParams.get('report') as ReportType | null;
+    if (report && reports.some((r) => r.id === report)) {
+      setActiveReport(report);
+      setReportData(null);
+      setSelectedAccountId('');
+      setInvoiceFilters({ type: '', contactId: '', periodStart: '', periodEnd: '' });
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const loadAccounts = async () => {
@@ -222,14 +242,6 @@ export default function ReportsPage() {
     loadAccounts();
     loadContacts();
   }, []);
-
-  const reports = [
-    { id: 'trial-balance' as const, name: 'Trial Balance' },
-    { id: 'balance-sheet' as const, name: 'Balance Sheet' },
-    { id: 'income-statement' as const, name: 'Income Statement' },
-    { id: 'statement-of-account' as const, name: 'Statement of Account' },
-    { id: 'invoice-report' as const, name: 'Invoice Report' },
-  ];
 
   const generateReport = async () => {
     setLoading(true);

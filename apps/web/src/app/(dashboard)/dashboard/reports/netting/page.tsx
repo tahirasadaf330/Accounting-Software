@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { api } from '@/lib/api';
-import { ArrowLeft, Printer, Download } from 'lucide-react';
+import { ArrowLeft, Printer, Download, ChevronDown, Search, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
+import { cn } from '@/lib/cn';
 
 interface NettingRow {
   id: string;
@@ -38,6 +39,125 @@ interface NettingReport {
 interface Contact {
   id: string;
   name: string;
+}
+
+function SearchableContactSelect({
+  contacts,
+  value,
+  onChange,
+  placeholder = 'All Contacts',
+}: {
+  contacts: Contact[];
+  value: string;
+  onChange: (id: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  const selected = contacts.find((c) => c.id === value);
+
+  const filtered = contacts.filter((c) => {
+    if (!search) return true;
+    return c.name.toLowerCase().includes(search.toLowerCase());
+  });
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative w-64">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+      >
+        <span className={selected ? 'text-gray-900' : 'text-gray-400'}>
+          {selected ? selected.name : placeholder}
+        </span>
+        <div className="flex items-center gap-1">
+          {selected && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+                setSearch('');
+              }}
+              className="rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          <ChevronDown className={cn('h-4 w-4 text-gray-400 transition-transform', open && 'rotate-180')} />
+        </div>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-80 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+          <div className="border-b border-gray-100 p-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search contacts..."
+                className="w-full rounded-md border border-gray-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <div className="max-h-60 overflow-y-auto">
+            <button
+              type="button"
+              onMouseDown={() => {
+                onChange('');
+                setOpen(false);
+                setSearch('');
+              }}
+              className={cn(
+                'w-full px-3 py-2.5 text-left text-sm hover:bg-gray-50',
+                !value && 'bg-primary-50 font-medium text-primary-700',
+              )}
+            >
+              {placeholder}
+            </button>
+            {filtered.length === 0 ? (
+              <div className="p-4 text-center text-sm text-gray-500">No contacts found</div>
+            ) : (
+              filtered.map((contact) => (
+                <button
+                  key={contact.id}
+                  type="button"
+                  onMouseDown={() => {
+                    onChange(contact.id);
+                    setOpen(false);
+                    setSearch('');
+                  }}
+                  className={cn(
+                    'w-full px-3 py-2.5 text-left text-sm hover:bg-gray-50',
+                    value === contact.id && 'bg-primary-50 font-medium text-primary-700',
+                  )}
+                >
+                  {contact.name}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const statusColors: Record<string, string> = {
@@ -169,16 +289,11 @@ export default function NettingReportPage() {
       <div className="mb-6 flex flex-wrap items-end gap-4 rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-200">
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Contact</label>
-          <select
+          <SearchableContactSelect
+            contacts={contacts}
             value={contactId}
-            onChange={(e) => setContactId(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">All Contacts</option>
-            {contacts.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+            onChange={setContactId}
+          />
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">From Date</label>
