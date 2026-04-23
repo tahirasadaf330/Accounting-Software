@@ -96,6 +96,64 @@ export class NettingCyclesService {
     return results;
   }
 
+  async getApprovedCyclesForSettlement(tenantId: string, contactId: string) {
+    const cycles = await this.prisma.nettingCycle.findMany({
+      where: {
+        tenantId,
+        contactId,
+        status: { in: [NettingCycleStatus.APPROVED, NettingCycleStatus.PARTIAL] },
+      },
+      include: { invoices: { select: { voucherId: true } } },
+      orderBy: { startDate: 'asc' },
+    });
+
+    const results = [];
+    for (const cycle of cycles) {
+      const linkedIds = cycle.invoices.map((i) => i.voucherId);
+      const invoices = await this.prisma.voucher.findMany({
+        where: {
+          id: { in: linkedIds.length > 0 ? linkedIds : ['none'] },
+          tenantId,
+          status: VoucherStatus.POSTED,
+        },
+        select: {
+          id: true,
+          voucherType: true,
+          totalAmount: true,
+          invoiceAllocations: { select: { amount: true } },
+        },
+      });
+
+      let salesTotal = 0;
+      let purchaseTotal = 0;
+      let salesCount = 0;
+      let purchaseCount = 0;
+      for (const inv of invoices) {
+        const paid = inv.invoiceAllocations.reduce((s, a) => s + a.amount.toNumber(), 0);
+        const remaining = inv.totalAmount.toNumber() - paid;
+        if (remaining > 0.01) {
+          if (inv.voucherType === 'SALES') { salesTotal += remaining; salesCount++; }
+          else { purchaseTotal += remaining; purchaseCount++; }
+        }
+      }
+
+      const netRaw = salesTotal - purchaseTotal;
+      results.push({
+        id: cycle.id,
+        startDate: (cycle.startDate as Date).toISOString().split('T')[0],
+        endDate: (cycle.endDate as Date).toISOString().split('T')[0],
+        status: cycle.status,
+        salesCount,
+        purchaseCount,
+        salesTotal: salesTotal.toFixed(4),
+        purchaseTotal: purchaseTotal.toFixed(4),
+        netTotal: Math.abs(netRaw).toFixed(4),
+        netNature: Math.abs(netRaw) < 0.01 ? 'Settled' : netRaw > 0 ? 'Receivable' : 'Payable',
+      });
+    }
+    return results;
+  }
+
   async findOne(tenantId: string, id: string) {
     const cycle = await this.prisma.nettingCycle.findFirst({
       where: { id, tenantId },

@@ -833,6 +833,8 @@ enum NettingCycleStatus {
   REJECTED
   AM_REJECTED
   CEO_REJECTED
+  PARTIAL
+  SETTLED
 }
 
 model NettingCycle {

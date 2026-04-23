@@ -13,6 +13,7 @@ import { VOUCHER_TYPE_PREFIX } from '@accounting-saas/shared';
 import { VOUCHER_EVENTS } from '../notifications/events/voucher-events';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { CreateVoucherWithAllocationsDto } from './dto/create-voucher-with-allocations.dto';
+import { CreateVoucherWithNettingDto } from './dto/create-voucher-with-netting.dto';
 import { UpdateVoucherDto } from './dto/update-voucher.dto';
 import { VoucherFilterDto } from './dto/voucher-filter.dto';
 import { PaymentAllocationsService } from '../payment-allocations/payment-allocations.service';
@@ -463,6 +464,174 @@ export class VouchersService {
         },
         allocations,
       );
+
+      return tx.voucher.findUnique({
+        where: { id: voucher.id },
+        include: {
+          lineItems: {
+            include: { account: { select: { id: true, code: true, name: true } } },
+            orderBy: { lineOrder: 'asc' },
+          },
+          createdBy: { select: { id: true, firstName: true, lastName: true } },
+          approvedBy: { select: { id: true, firstName: true, lastName: true } },
+          journalEntry: {
+            include: {
+              lines: {
+                include: { account: { select: { id: true, code: true, name: true } } },
+                orderBy: { lineOrder: 'asc' },
+              },
+            },
+          },
+        },
+      });
+    });
+  }
+
+  async createWithNettingAllocations(
+    tenantId: string,
+    userId: string,
+    dto: CreateVoucherWithNettingDto,
+  ) {
+    const { voucher: voucherDto, nettingAllocations } = dto;
+    const { totalDebits } = this.validateDoubleEntry(voucherDto.lineItems);
+
+    if (!voucherDto.contactId) {
+      throw new BadRequestException('contactId is required when settling netting cycles');
+    }
+
+    const voucherDate = new Date(voucherDto.date);
+    const voucherExchangeRate = voucherDto.exchangeRate || '1';
+
+    return this.prisma.$transaction(async (tx) => {
+      const accountIds = voucherDto.lineItems.map((li) => li.accountId);
+      await this.validateAccounts(tenantId, accountIds, tx);
+
+      const voucherNumber = await this.generateVoucherNumber(
+        tenantId,
+        voucherDto.voucherType,
+        voucherDate,
+        tx,
+      );
+
+      const lineItemsData = voucherDto.lineItems.map((li, index) => {
+        const lineExchangeRate = li.exchangeRate || voucherExchangeRate;
+        const debit = toDecimal(li.debit);
+        const credit = toDecimal(li.credit);
+        const baseDebit = convertCurrency(debit, lineExchangeRate);
+        const baseCredit = convertCurrency(credit, lineExchangeRate);
+        return {
+          tenantId,
+          accountId: li.accountId,
+          debit: new Prisma.Decimal(debit.toFixed(4)),
+          credit: new Prisma.Decimal(credit.toFixed(4)),
+          currencyCode: li.currencyCode || voucherDto.currencyCode || 'USD',
+          exchangeRate: new Prisma.Decimal(toDecimal(lineExchangeRate).toFixed(8)),
+          baseDebit: new Prisma.Decimal(baseDebit.toFixed(4)),
+          baseCredit: new Prisma.Decimal(baseCredit.toFixed(4)),
+          narration: li.narration || null,
+          costCenter: li.costCenter || null,
+          lineOrder: index + 1,
+        };
+      });
+
+      const now = new Date();
+      const voucher = await tx.voucher.create({
+        data: {
+          tenantId,
+          voucherNumber,
+          voucherType: voucherDto.voucherType,
+          status: VoucherStatus.POSTED,
+          date: voucherDate,
+          narration: voucherDto.narration,
+          reference: voucherDto.reference || null,
+          totalAmount: new Prisma.Decimal(totalDebits.toFixed(4)),
+          currencyCode: voucherDto.currencyCode || 'USD',
+          exchangeRate: new Prisma.Decimal(toDecimal(voucherExchangeRate).toFixed(8)),
+          createdById: userId,
+          approvedById: userId,
+          postedAt: now,
+          contactId: voucherDto.contactId,
+          periodStart: voucherDto.periodStart ? new Date(voucherDto.periodStart) : undefined,
+          periodEnd: voucherDto.periodEnd ? new Date(voucherDto.periodEnd) : undefined,
+          lineItems: { createMany: { data: lineItemsData } },
+        },
+        include: { lineItems: { orderBy: { lineOrder: 'asc' } } },
+      });
+
+      await this.createJournalEntryForVoucher(tx, tenantId, voucher);
+
+      // Settle each netting cycle
+      for (const alloc of nettingAllocations) {
+        const cycle = await tx.nettingCycle.findFirst({
+          where: { id: alloc.nettingCycleId, tenantId },
+          include: { invoices: { select: { voucherId: true } } },
+        });
+        if (!cycle) continue;
+
+        const linkedIds = cycle.invoices.map((i) => i.voucherId);
+        const invoices = await tx.voucher.findMany({
+          where: { id: { in: linkedIds.length > 0 ? linkedIds : ['none'] }, tenantId, status: VoucherStatus.POSTED },
+          select: {
+            id: true,
+            voucherType: true,
+            totalAmount: true,
+            invoiceAllocations: { select: { amount: true } },
+          },
+        });
+
+        // Allocate to SALES invoices for RECEIPT (Receivable), PURCHASE for PAYMENT (Payable)
+        const side = voucherDto.voucherType === VoucherType.RECEIPT ? VoucherType.SALES : VoucherType.PURCHASE;
+        const sideInvoices = invoices
+          .filter((inv) => inv.voucherType === side)
+          .map((inv) => {
+            const paid = inv.invoiceAllocations.reduce((s, a) => s + a.amount.toNumber(), 0);
+            return { id: inv.id, remaining: inv.totalAmount.toNumber() - paid };
+          })
+          .filter((inv) => inv.remaining > 0.01);
+
+        const sideTotalRemaining = sideInvoices.reduce((s, inv) => s + inv.remaining, 0);
+
+        if (sideTotalRemaining > 0) {
+          let amountLeft = alloc.amount;
+          for (const inv of sideInvoices) {
+            const proportion = inv.remaining / sideTotalRemaining;
+            const allocAmt = Math.min(parseFloat((alloc.amount * proportion).toFixed(4)), inv.remaining, amountLeft);
+            if (allocAmt <= 0) continue;
+            await tx.paymentAllocation.create({
+              data: {
+                tenantId,
+                paymentVoucherId: voucher.id,
+                invoiceVoucherId: inv.id,
+                amount: new Prisma.Decimal(allocAmt.toFixed(4)),
+                paidAt: new Date(alloc.paidAt),
+              },
+            });
+            amountLeft -= allocAmt;
+          }
+        }
+
+        // Recompute net after allocations to determine new status
+        const updatedInvoices = await tx.voucher.findMany({
+          where: { id: { in: linkedIds.length > 0 ? linkedIds : ['none'] }, tenantId, status: VoucherStatus.POSTED },
+          select: { voucherType: true, totalAmount: true, invoiceAllocations: { select: { amount: true } } },
+        });
+        let salesRem = 0;
+        let purchaseRem = 0;
+        for (const inv of updatedInvoices) {
+          const paid = inv.invoiceAllocations.reduce((s, a) => s + a.amount.toNumber(), 0);
+          const rem = inv.totalAmount.toNumber() - paid;
+          if (rem > 0.01) {
+            if (inv.voucherType === 'SALES') salesRem += rem;
+            else purchaseRem += rem;
+          }
+        }
+        const newNet = Math.abs(salesRem - purchaseRem);
+        const newStatus = newNet <= 0.01 ? 'SETTLED' : 'PARTIAL';
+        await tx.nettingCycle.update({
+          where: { id: cycle.id },
+          data: { status: newStatus as any },
+        });
+      }
 
       return tx.voucher.findUnique({
         where: { id: voucher.id },

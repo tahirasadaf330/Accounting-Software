@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { Plus, FileText, ChevronDown, ShoppingCart, Receipt, Search } from 'lucide-react';
+import { Plus, FileText, ChevronDown, ShoppingCart, Receipt, Search, CreditCard, Wallet } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 interface Voucher {
@@ -119,32 +119,38 @@ export default function VouchersPage() {
             <ChevronDown className={cn('h-4 w-4 transition-transform', createDropdownOpen && 'rotate-180')} />
           </button>
           {createDropdownOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+            <div className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
               <button
-                onClick={() => {
-                  router.push('/dashboard/vouchers/new');
-                  setCreateDropdownOpen(false);
-                }}
+                onClick={() => { router.push('/dashboard/vouchers/new?type=PAYMENT'); setCreateDropdownOpen(false); }}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <CreditCard className="h-4 w-4 text-red-500" />
+                Payment Voucher
+              </button>
+              <button
+                onClick={() => { router.push('/dashboard/vouchers/new?type=RECEIPT'); setCreateDropdownOpen(false); }}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <Wallet className="h-4 w-4 text-green-500" />
+                Receipt Voucher
+              </button>
+              <div className="my-1 border-t border-gray-100" />
+              <button
+                onClick={() => { router.push('/dashboard/vouchers/new'); setCreateDropdownOpen(false); }}
                 className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
               >
                 <FileText className="h-4 w-4 text-gray-400" />
                 General Voucher
               </button>
               <button
-                onClick={() => {
-                  router.push('/dashboard/vouchers/sales-invoice');
-                  setCreateDropdownOpen(false);
-                }}
+                onClick={() => { router.push('/dashboard/vouchers/sales-invoice'); setCreateDropdownOpen(false); }}
                 className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
               >
                 <Receipt className="h-4 w-4 text-blue-500" />
                 Sales Invoice
               </button>
               <button
-                onClick={() => {
-                  router.push('/dashboard/vouchers/purchase-invoice');
-                  setCreateDropdownOpen(false);
-                }}
+                onClick={() => { router.push('/dashboard/vouchers/purchase-invoice'); setCreateDropdownOpen(false); }}
                 className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
               >
                 <ShoppingCart className="h-4 w-4 text-orange-500" />

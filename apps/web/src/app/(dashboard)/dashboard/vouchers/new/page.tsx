@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,6 +14,9 @@ import ContactSelector from '../invoice/ContactSelector';
 import InvoiceAllocationPanel, {
   AllocationSelection,
 } from './InvoiceAllocationPanel';
+import NettingSettlementPanel, {
+  NettingAllocationSelection,
+} from './NettingSettlementPanel';
 
 // --- Types ---
 
@@ -222,6 +225,7 @@ function AccountCombobox({
 
 export default function NewVoucherPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const baseCurrency = useAuthStore((s) => s.tenant?.baseCurrency ?? 'USD');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -229,7 +233,7 @@ export default function NewVoucherPage() {
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [allocations, setAllocations] = useState<AllocationSelection[]>([]);
-  const [bankAccountId, setBankAccountId] = useState('');
+  const [nettingAllocations, setNettingAllocations] = useState<NettingAllocationSelection[]>([]);
   const lastAutoReferenceRef = useRef('');
 
   const {
@@ -264,9 +268,15 @@ export default function NewVoucherPage() {
     [contacts, selectedContactId],
   );
 
+  const showNettingPanel =
+    !!selectedContact?.accountId &&
+    selectedContact.type === 'BOTH' &&
+    (watchedVoucherType === 'RECEIPT' || watchedVoucherType === 'PAYMENT');
+
   const showAllocationPanel =
     !!selectedContact &&
     !!selectedContact.accountId &&
+    !showNettingPanel &&
     (watchedVoucherType === 'RECEIPT' ||
       watchedVoucherType === 'PAYMENT' ||
       watchedVoucherType === 'JOURNAL');
@@ -299,6 +309,11 @@ export default function NewVoucherPage() {
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.0001 && (totalDebit > 0 || totalCredit > 0);
 
   useEffect(() => {
+    const type = searchParams.get('type');
+    if (type) setValue('voucherType', type as any);
+  }, []);
+
+  useEffect(() => {
     loadAccounts();
     loadContacts();
   }, []);
@@ -325,6 +340,7 @@ export default function NewVoucherPage() {
   const handleContactChange = (contactId: string) => {
     setSelectedContactId(contactId);
     setAllocations([]);
+    setNettingAllocations([]);
     if (contactId) {
       const contact = contacts.find((c) => c.id === contactId);
       if (contact?.accountId) {
@@ -352,36 +368,21 @@ export default function NewVoucherPage() {
 
     // If bank account not chosen yet, just set trade; user will pick bank.
     if (rx > 0 && py === 0) {
-      // Receipt side: Bank Dr, Trade Cr
-      if (bankAccountId) {
-        setValue('lineItems.0.accountId', bankAccountId, { shouldValidate: false });
-        setValue('lineItems.0.debit', rx.toFixed(2), { shouldValidate: false });
-        setValue('lineItems.0.credit', '', { shouldValidate: false });
-      }
+      // Receipt side: Trade Cr
       setValue('lineItems.1.accountId', tradeAccount, { shouldValidate: false });
       setValue('lineItems.1.debit', '', { shouldValidate: false });
       setValue('lineItems.1.credit', rx.toFixed(2), { shouldValidate: false });
     } else if (py > 0 && rx === 0) {
-      // Payment side: Trade Dr, Bank Cr
+      // Payment side: Trade Dr
       setValue('lineItems.0.accountId', tradeAccount, { shouldValidate: false });
       setValue('lineItems.0.debit', py.toFixed(2), { shouldValidate: false });
       setValue('lineItems.0.credit', '', { shouldValidate: false });
-      if (bankAccountId) {
-        setValue('lineItems.1.accountId', bankAccountId, { shouldValidate: false });
-        setValue('lineItems.1.debit', '', { shouldValidate: false });
-        setValue('lineItems.1.credit', py.toFixed(2), { shouldValidate: false });
-      }
     } else if (rx > 0 && py > 0) {
-      // Netting: net cash moves on bank, net trade on trade account.
+      // Netting: net trade on trade account.
       const net = rx - py;
       const abs = Math.abs(net).toFixed(2);
       if (net >= 0) {
         // More receivable cleared than payable — net is cash IN.
-        if (bankAccountId) {
-          setValue('lineItems.0.accountId', bankAccountId, { shouldValidate: false });
-          setValue('lineItems.0.debit', abs, { shouldValidate: false });
-          setValue('lineItems.0.credit', '', { shouldValidate: false });
-        }
         setValue('lineItems.1.accountId', tradeAccount, { shouldValidate: false });
         setValue('lineItems.1.debit', '', { shouldValidate: false });
         setValue('lineItems.1.credit', abs, { shouldValidate: false });
@@ -390,15 +391,10 @@ export default function NewVoucherPage() {
         setValue('lineItems.0.accountId', tradeAccount, { shouldValidate: false });
         setValue('lineItems.0.debit', abs, { shouldValidate: false });
         setValue('lineItems.0.credit', '', { shouldValidate: false });
-        if (bankAccountId) {
-          setValue('lineItems.1.accountId', bankAccountId, { shouldValidate: false });
-          setValue('lineItems.1.debit', '', { shouldValidate: false });
-          setValue('lineItems.1.credit', abs, { shouldValidate: false });
-        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allocations, bankAccountId, selectedContact?.accountId]);
+  }, [allocations, selectedContact?.accountId]);
 
   // Auto-fill Reference with comma-separated voucher numbers of ticked
   // invoices. Respects manual edits: if the user has typed their own value
@@ -412,6 +408,47 @@ export default function NewVoucherPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allocations]);
+
+  // Auto-fill line items from netting allocation totals
+  useEffect(() => {
+    if (!showNettingPanel) return;
+    if (!selectedContact?.accountId) return;
+    if (nettingAllocations.length === 0) return;
+    const receivableTotal = nettingAllocations
+      .filter((a) => a.netNature === 'Receivable')
+      .reduce((s, a) => s + a.amount, 0);
+    const payableTotal = nettingAllocations
+      .filter((a) => a.netNature === 'Payable')
+      .reduce((s, a) => s + a.amount, 0);
+    // Net cash flow: positive = cash IN (receipt), negative = cash OUT (payment)
+    const net = receivableTotal - payableTotal;
+    const abs = Math.abs(net).toFixed(2);
+    const tradeAccount = selectedContact.accountId;
+    if (net >= 0) {
+      // Cash flows in: Cr Trade
+      setValue('lineItems.1.accountId', tradeAccount, { shouldValidate: false });
+      setValue('lineItems.1.debit', '', { shouldValidate: false });
+      setValue('lineItems.1.credit', abs, { shouldValidate: false });
+    } else {
+      // Cash flows out: Dr Trade
+      setValue('lineItems.0.accountId', tradeAccount, { shouldValidate: false });
+      setValue('lineItems.0.debit', abs, { shouldValidate: false });
+      setValue('lineItems.0.credit', '', { shouldValidate: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nettingAllocations, selectedContact?.accountId, watchedVoucherType]);
+
+  // Auto-fill Reference from netting cycle period labels
+  useEffect(() => {
+    if (!showNettingPanel) return;
+    const joined = nettingAllocations.map((a) => a.cycleRef).join(', ');
+    const current = getValues('reference') ?? '';
+    if (current === '' || current === lastAutoReferenceRef.current) {
+      setValue('reference', joined, { shouldValidate: false });
+      lastAutoReferenceRef.current = joined;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nettingAllocations, showNettingPanel]);
 
   const handleDebitChange = (index: number, value: string) => {
     setValue(`lineItems.${index}.debit`, value, { shouldValidate: false });
@@ -448,7 +485,19 @@ export default function NewVoucherPage() {
       }
 
       let result: { id: string };
-      if (allocations.length > 0) {
+      if (showNettingPanel && nettingAllocations.length > 0) {
+        if (!selectedContactId) {
+          throw new Error('A contact is required when settling netting cycles');
+        }
+        result = await api.post<{ id: string }>('/vouchers/with-netting-allocations', {
+          voucher: voucherPayload,
+          nettingAllocations: nettingAllocations.map((a) => ({
+            nettingCycleId: a.nettingCycleId,
+            amount: a.amount,
+            paidAt: a.paidAt,
+          })),
+        });
+      } else if (allocations.length > 0) {
         if (!selectedContactId) {
           throw new Error('A contact is required when allocating to invoices');
         }
@@ -600,27 +649,21 @@ export default function NewVoucherPage() {
               )}
             </div>
 
-            {/* Bank/Cash account (shown when allocation panel is active) */}
-            {showAllocationPanel && (
-              <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Bank / Cash Account <span className="text-red-500">*</span>
-                </label>
-                <AccountCombobox
-                  accounts={accounts}
-                  value={bankAccountId}
-                  onChange={setBankAccountId}
-                  hasError={false}
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  Used to record the cash side of the payment or receipt
-                </p>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Invoice Allocation Panel */}
+        {/* Netting Settlement Panel — for BOTH contacts on RECEIPT/PAYMENT */}
+        {showNettingPanel && selectedContact && (
+          <NettingSettlementPanel
+            contactId={selectedContact.id}
+            voucherType={watchedVoucherType}
+            paymentDate={watchedDate}
+            currency={baseCurrency}
+            onChange={setNettingAllocations}
+          />
+        )}
+
+        {/* Invoice Allocation Panel — for CUSTOMER/VENDOR contacts or JOURNAL */}
         {showAllocationPanel && selectedContact && (
           <>
             <InvoiceAllocationPanel

@@ -21,6 +21,7 @@ import * as fs from 'fs';
 import { VouchersService } from './vouchers.service';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { CreateVoucherWithAllocationsDto } from './dto/create-voucher-with-allocations.dto';
+import { CreateVoucherWithNettingDto } from './dto/create-voucher-with-netting.dto';
 import { UpdateVoucherDto } from './dto/update-voucher.dto';
 import { VoucherFilterDto } from './dto/voucher-filter.dto';
 import { RejectVoucherDto } from './dto/reject-voucher.dto';
@@ -62,6 +63,18 @@ export class VouchersController {
     @Body() dto: CreateVoucherWithAllocationsDto,
   ) {
     return this.vouchersService.createWithAllocations(tenantId, userId, dto);
+  }
+
+  @Post('with-netting-allocations')
+  @ApiOperation({ summary: 'Create a voucher and settle selected netting cycles atomically' })
+  @ApiResponse({ status: 201, description: 'Voucher created and netting cycles settled' })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  async createWithNettingAllocations(
+    @TenantId() tenantId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateVoucherWithNettingDto,
+  ) {
+    return this.vouchersService.createWithNettingAllocations(tenantId, userId, dto);
   }
 
   @Get()

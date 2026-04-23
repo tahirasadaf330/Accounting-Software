@@ -43,6 +43,16 @@ export class NettingCyclesController {
     return this.service.findAll(tenantId, contactId, status);
   }
 
+  @Get('approved-for-settlement')
+  @ApiOperation({ summary: 'Get approved/partial netting cycles for settlement by contact' })
+  @ApiQuery({ name: 'contactId', required: true })
+  getApprovedForSettlement(
+    @TenantId() tenantId: string,
+    @Query('contactId') contactId: string,
+  ) {
+    return this.service.getApprovedCyclesForSettlement(tenantId, contactId);
+  }
+
   @Get('unpaid-invoices')
   @ApiOperation({ summary: 'Get unpaid invoices for a contact in date range' })
   @ApiQuery({ name: 'contactId', required: true })
