@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useDebounced } from '@/lib/useDebounced';
+import { Pagination } from '@/components/Pagination';
 import { Plus, FileText, ChevronDown, ShoppingCart, Receipt, Search, CreditCard, Wallet } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
@@ -17,6 +19,18 @@ interface Voucher {
   totalAmount: string;
   currencyCode: string;
   createdBy?: { firstName: string; lastName: string };
+}
+
+interface VouchersResponse {
+  data: Voucher[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
 }
 
 const statusColors: Record<string, string> = {
@@ -42,11 +56,17 @@ const typeLabels: Record<string, string> = {
 export default function VouchersPage() {
   const router = useRouter();
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [createDropdownOpen, setCreateDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const debouncedSearch = useDebounced(search, 300);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -58,49 +78,60 @@ export default function VouchersPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Reset to page 1 whenever filters / search / page size change.
   useEffect(() => {
-    loadVouchers();
-  }, [statusFilter]);
+    setPage(1);
+  }, [statusFilter, debouncedSearch, pageSize]);
 
-  // Auto-refresh when page gets focus (returning from another tab/page)
   useEffect(() => {
-    const handleFocus = () => loadVouchers();
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const params: Record<string, string | number> = {
+          page,
+          limit: pageSize,
+          sortBy: 'createdAt',
+          sortOrder: 'desc',
+        };
+        if (statusFilter) params.status = statusFilter;
+        if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+        const data = await api.get<VouchersResponse>('/vouchers', params);
+        if (cancelled) return;
+        setVouchers(data.data ?? []);
+        setTotal(data.meta?.total ?? data.data?.length ?? 0);
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Failed to load vouchers:', err);
+          setVouchers([]);
+          setTotal(0);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [statusFilter, debouncedSearch, page, pageSize, refreshKey]);
+
+  // Re-fetch when the tab regains focus (e.g., after viewing/creating a
+  // voucher in another tab) so a freshly created voucher shows up at row 1.
+  useEffect(() => {
+    const handleFocus = () => {
+      setPage(1);
+      setRefreshKey((k) => k + 1);
+    };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [statusFilter]);
-
-  const loadVouchers = async () => {
-    setLoading(true);
-    try {
-      const params: Record<string, string | number> = { page: 1, limit: 50 };
-      if (statusFilter) params.status = statusFilter;
-      const data = await api.get<any>('/vouchers', params);
-      setVouchers(data.data || data);
-    } catch (err) {
-      console.error('Failed to load vouchers:', err);
-    }
-    setLoading(false);
-  };
+  }, []);
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString();
   const formatAmount = (amount: string, currency: string) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(amount));
 
-  const filteredVouchers = search.trim()
-    ? vouchers.filter((v) => {
-        const q = search.toLowerCase();
-        return (
-          v.voucherNumber.toLowerCase().includes(q) ||
-          (v.reference ?? '').toLowerCase().includes(q) ||
-          formatDate(v.date).toLowerCase().includes(q) ||
-          (typeLabels[v.voucherType] ?? v.voucherType).toLowerCase().includes(q) ||
-          (v.narration ?? '').toLowerCase().includes(q) ||
-          formatAmount(v.totalAmount, v.currencyCode).toLowerCase().includes(q) ||
-          v.status.toLowerCase().includes(q) ||
-          v.currencyCode.toLowerCase().includes(q)
-        );
-      })
-    : vouchers;
+  const showingResults = useMemo(() => vouchers.length > 0, [vouchers]);
 
   return (
     <div>
@@ -184,64 +215,75 @@ export default function VouchersPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search vouchers..."
-            className="h-9 w-64 rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            placeholder="Search by number, type, status, contact, amount, date..."
+            className="h-9 w-80 rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-sm text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
           />
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
-        {loading ? (
-          <div className="flex items-center justify-center p-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
-          </div>
-        ) : filteredVouchers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-gray-500">
-            <FileText className="mb-4 h-12 w-12 text-gray-300" />
-            <p className="text-sm">{search ? 'No vouchers match your search' : 'No vouchers found'}</p>
-          </div>
-        ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Number</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Reference</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Narration</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredVouchers.map((v) => (
-                <tr key={v.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-4 py-3 text-sm font-mono">
-                    <button
-                      onClick={() => router.push(`/dashboard/vouchers/${v.id}`)}
-                      className="text-primary-600 hover:text-primary-800 hover:underline"
-                    >
-                      {v.voucherNumber}
-                    </button>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{v.reference || '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{formatDate(v.date)}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
-                    {typeLabels[v.voucherType] || v.voucherType}
-                  </td>
-                  <td className="max-w-xs truncate px-4 py-3 text-sm text-gray-700">{v.narration}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-900">
-                    {formatAmount(v.totalAmount, v.currencyCode)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-sm">
-                    <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', statusColors[v.status])}>
-                      {v.status.replace('_', ' ')}
-                    </span>
-                  </td>
+      <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="flex items-center justify-center p-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+            </div>
+          ) : !showingResults ? (
+            <div className="flex flex-col items-center justify-center p-12 text-gray-500">
+              <FileText className="mb-4 h-12 w-12 text-gray-300" />
+              <p className="text-sm">{debouncedSearch ? 'No vouchers match your search' : 'No vouchers found'}</p>
+            </div>
+          ) : (
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Number</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Reference</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Narration</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {vouchers.map((v) => (
+                  <tr key={v.id} className="hover:bg-gray-50">
+                    <td className="whitespace-nowrap px-4 py-3 text-sm font-mono">
+                      <button
+                        onClick={() => router.push(`/dashboard/vouchers/${v.id}`)}
+                        className="text-primary-600 hover:text-primary-800 hover:underline"
+                      >
+                        {v.voucherNumber}
+                      </button>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{v.reference || '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">{formatDate(v.date)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">
+                      {typeLabels[v.voucherType] || v.voucherType}
+                    </td>
+                    <td className="max-w-xs truncate px-4 py-3 text-sm text-gray-700">{v.narration}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-900">
+                      {formatAmount(v.totalAmount, v.currencyCode)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm">
+                      <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', statusColors[v.status])}>
+                        {v.status.replace('_', ' ')}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        {!loading && total > 0 && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </div>
     </div>

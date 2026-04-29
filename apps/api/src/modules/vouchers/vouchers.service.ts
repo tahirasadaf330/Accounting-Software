@@ -657,6 +657,11 @@ export class VouchersService {
 
   /**
    * List vouchers with filtering, searching, and pagination.
+   *
+   * Search matches across: voucherNumber, narration, reference, currencyCode,
+   * voucherType / status (label-aware), totalAmount (when numeric), date (when
+   * the input parses as YYYY-MM-DD), the linked contact name, and the creator
+   * first/last name.
    */
   async findAll(tenantId: string, filters: VoucherFilterDto) {
     const {
@@ -667,7 +672,7 @@ export class VouchersService {
       search,
       page = 1,
       limit = 20,
-      sortBy = 'date',
+      sortBy = 'createdAt',
       sortOrder = 'desc',
     } = filters;
 
@@ -694,15 +699,58 @@ export class VouchersService {
     }
 
     if (search) {
-      where.OR = [
-        { narration: { contains: search, mode: 'insensitive' } },
-        { voucherNumber: { contains: search, mode: 'insensitive' } },
-        { reference: { contains: search, mode: 'insensitive' } },
+      const term = search.trim();
+      const lower = term.toLowerCase();
+      const orConditions: Prisma.VoucherWhereInput[] = [
+        { voucherNumber: { contains: term, mode: 'insensitive' } },
+        { narration: { contains: term, mode: 'insensitive' } },
+        { reference: { contains: term, mode: 'insensitive' } },
+        { currencyCode: { contains: term, mode: 'insensitive' } },
+        { contact: { is: { name: { contains: term, mode: 'insensitive' } } } },
+        { createdBy: { is: { firstName: { contains: term, mode: 'insensitive' } } } },
+        { createdBy: { is: { lastName: { contains: term, mode: 'insensitive' } } } },
       ];
+
+      // Enum match: voucherType (handles labels like "Sales", "Credit Note")
+      for (const value of Object.values(VoucherType)) {
+        if (
+          value.toLowerCase().includes(lower) ||
+          value.replace(/_/g, ' ').toLowerCase().includes(lower)
+        ) {
+          orConditions.push({ voucherType: value });
+        }
+      }
+
+      // Enum match: status
+      for (const value of Object.values(VoucherStatus)) {
+        if (
+          value.toLowerCase().includes(lower) ||
+          value.replace(/_/g, ' ').toLowerCase().includes(lower)
+        ) {
+          orConditions.push({ status: value });
+        }
+      }
+
+      // Numeric match against totalAmount
+      const numeric = Number(term.replace(/[, ]/g, ''));
+      if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
+        orConditions.push({ totalAmount: new Prisma.Decimal(numeric) });
+      }
+
+      // Date match (YYYY-MM-DD) against the voucher date
+      if (/^\d{4}-\d{2}-\d{2}$/.test(term)) {
+        const start = new Date(`${term}T00:00:00.000Z`);
+        const end = new Date(`${term}T23:59:59.999Z`);
+        if (!Number.isNaN(start.getTime())) {
+          orConditions.push({ date: { gte: start, lte: end } });
+        }
+      }
+
+      where.OR = orConditions;
     }
 
     const allowedSortFields = ['date', 'voucherNumber', 'totalAmount', 'createdAt'];
-    const orderField = allowedSortFields.includes(sortBy) ? sortBy : 'date';
+    const orderField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
 
     const skip = (page - 1) * limit;
 
@@ -717,7 +765,7 @@ export class VouchersService {
           createdBy: { select: { id: true, firstName: true, lastName: true } },
           approvedBy: { select: { id: true, firstName: true, lastName: true } },
         },
-        orderBy: { [orderField]: sortOrder },
+        orderBy: [{ [orderField]: sortOrder }, { id: 'desc' }],
         skip,
         take: limit,
       }),

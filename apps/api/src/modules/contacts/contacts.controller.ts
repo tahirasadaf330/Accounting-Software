@@ -44,17 +44,34 @@ export class ContactsController {
 
   @Get()
   @ApiOperation({ summary: 'List contacts with optional filters' })
-  @ApiResponse({ status: 200, description: 'List of contacts' })
-  @ApiQuery({ name: 'search', required: false, description: 'Search by name, email, or phone' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Returns an array of contacts by default; returns `{ data, meta }` when `page` or `limit` is supplied.',
+  })
+  @ApiQuery({ name: 'search', required: false, description: 'Search by name, email, phone, city, country, tax ID, or linked account' })
   @ApiQuery({ name: 'isActive', required: false, description: 'Filter by active status' })
   @ApiQuery({ name: 'type', required: false, description: 'Filter by contact type (CUSTOMER, VENDOR, BOTH)' })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number (1-indexed). Triggers paginated response shape.' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Page size (1-100). Triggers paginated response shape.' })
   findAll(
     @TenantId() tenantId: string,
     @Query('search') search?: string,
     @Query('isActive') isActive?: string,
     @Query('type') type?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.contactsService.findAll(tenantId, search, isActive, type);
+    const pageNum = page !== undefined ? Number(page) : undefined;
+    const limitNum = limit !== undefined ? Number(limit) : undefined;
+    return this.contactsService.findAll(
+      tenantId,
+      search,
+      isActive,
+      type,
+      pageNum,
+      limitNum,
+    );
   }
 
   @Get(':id')

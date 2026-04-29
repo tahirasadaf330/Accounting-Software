@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useDebounced } from '@/lib/useDebounced';
+import { Pagination } from '@/components/Pagination';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
 import { ArrowLeftRight, ChevronDown, ChevronUp, RotateCcw, Search } from 'lucide-react';
@@ -45,35 +47,51 @@ export default function JournalEntriesPage() {
   const router = useRouter();
   const baseCurrency = useAuthStore((s) => s.tenant?.baseCurrency ?? 'USD');
   const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  const search = useDebounced(searchInput, 300);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, dateFrom, dateTo, pageSize]);
 
   useEffect(() => {
     loadEntries();
-  }, [search, dateFrom, dateTo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, dateFrom, dateTo, page, pageSize]);
 
   const loadEntries = async () => {
     setLoading(true);
     try {
-      const params: Record<string, string | number> = { page: 1, limit: 50 };
+      const params: Record<string, string | number> = {
+        page,
+        limit: pageSize,
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+      };
       if (search) params.search = search;
       if (dateFrom) params.dateFrom = dateFrom;
       if (dateTo) params.dateTo = dateTo;
       const data = await api.get<any>('/journal-entries', params);
       setEntries(data.data || []);
+      setTotal(data.meta?.total ?? data.data?.length ?? 0);
     } catch (err) {
       console.error('Failed to load journal entries:', err);
+      setEntries([]);
+      setTotal(0);
     }
     setLoading(false);
   };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setSearch(searchInput);
   };
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString();
@@ -100,16 +118,10 @@ export default function JournalEntriesPage() {
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search entries..."
-              className="rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+              placeholder="Search by entry #, voucher #, or narration..."
+              className="w-72 rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
             />
           </div>
-          <button
-            type="submit"
-            className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
-          >
-            Search
-          </button>
         </form>
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-500">From</label>
@@ -127,10 +139,10 @@ export default function JournalEntriesPage() {
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
           />
         </div>
-        {(search || dateFrom || dateTo) && (
+        {(searchInput || dateFrom || dateTo) && (
           <button
             type="button"
-            onClick={() => { setSearch(''); setSearchInput(''); setDateFrom(''); setDateTo(''); }}
+            onClick={() => { setSearchInput(''); setDateFrom(''); setDateTo(''); }}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
           >
             Clear
@@ -139,7 +151,8 @@ export default function JournalEntriesPage() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+      <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+        <div className="overflow-x-auto">
         {loading ? (
           <div className="flex items-center justify-center p-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
@@ -255,6 +268,16 @@ export default function JournalEntriesPage() {
               })}
             </tbody>
           </table>
+        )}
+        </div>
+        {!loading && total > 0 && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </div>
     </div>
