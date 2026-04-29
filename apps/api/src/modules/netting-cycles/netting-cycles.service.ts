@@ -612,7 +612,10 @@ export class NettingCyclesService {
       orderBy: { date: 'asc' },
     });
 
-    // Get carry forward from previous cycles (unpaid amounts from invoices before this cycle)
+    // Get carry forward: unpaid invoices dated before this cycle that are NOT
+    // already attached to it. Without the notIn filter, an attached invoice
+    // dated before the cycle would be counted twice — once in the cycle's
+    // invoices section and again as carry-forward — inflating the net total.
     const carryForwardInvoices = await this.prisma.voucher.findMany({
       where: {
         tenantId,
@@ -620,6 +623,7 @@ export class NettingCyclesService {
         status: VoucherStatus.POSTED,
         voucherType: { in: [VoucherType.SALES, VoucherType.PURCHASE] },
         date: { lt: cycle.startDate },
+        ...(linkedIds.length > 0 ? { id: { notIn: linkedIds } } : {}),
       },
       select: {
         id: true,
