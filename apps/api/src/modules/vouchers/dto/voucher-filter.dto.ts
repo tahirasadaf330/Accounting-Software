@@ -24,7 +24,10 @@ export class VoucherFilterDto {
   @IsDateString()
   dateTo?: string;
 
-  @ApiPropertyOptional({ description: 'Search by narration or voucher number' })
+  @ApiPropertyOptional({
+    description:
+      'Search across voucher number, narration, reference, currency, voucher type, status, total amount, date (YYYY-MM-DD), contact name, and creator name',
+  })
   @IsOptional()
   @IsString()
   search?: string;
@@ -44,10 +47,10 @@ export class VoucherFilterDto {
   @Max(100)
   limit?: number = 20;
 
-  @ApiPropertyOptional({ default: 'date', enum: ['date', 'voucherNumber', 'totalAmount', 'createdAt'] })
+  @ApiPropertyOptional({ default: 'createdAt', enum: ['date', 'voucherNumber', 'totalAmount', 'createdAt'] })
   @IsOptional()
   @IsString()
-  sortBy?: string = 'date';
+  sortBy?: string = 'createdAt';
 
   @ApiPropertyOptional({ default: 'desc', enum: ['asc', 'desc'] })
   @IsOptional()

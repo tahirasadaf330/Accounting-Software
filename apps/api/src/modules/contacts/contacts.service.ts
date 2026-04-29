@@ -108,6 +108,8 @@ export class ContactsService {
     search?: string,
     isActive?: string,
     type?: string,
+    page?: number,
+    limit?: number,
   ) {
     const where: any = { tenantId };
 
@@ -120,6 +122,11 @@ export class ContactsService {
         { name: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search, mode: 'insensitive' } },
+        { city: { contains: search, mode: 'insensitive' } },
+        { country: { contains: search, mode: 'insensitive' } },
+        { taxId: { contains: search, mode: 'insensitive' } },
+        { account: { is: { code: { contains: search, mode: 'insensitive' } } } },
+        { account: { is: { name: { contains: search, mode: 'insensitive' } } } },
       ];
     }
 
@@ -127,16 +134,51 @@ export class ContactsService {
       where.isActive = isActive === 'true';
     }
 
+    const include = {
+      account: {
+        select: { id: true, code: true, name: true },
+      },
+      accountManagers: {
+        include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
+      },
+    } as const;
+
+    // Paginated mode: only when caller explicitly supplied page/limit so the
+    // existing array-shaped contract used by dropdowns keeps working.
+    if (page !== undefined || limit !== undefined) {
+      const safePage = Math.max(1, Number(page ?? 1) || 1);
+      const safeLimit = Math.min(100, Math.max(1, Number(limit ?? 25) || 25));
+      const skip = (safePage - 1) * safeLimit;
+
+      const [contacts, total] = await this.prisma.$transaction([
+        this.prisma.contact.findMany({
+          where,
+          include,
+          orderBy: [{ name: 'asc' }, { id: 'asc' }],
+          skip,
+          take: safeLimit,
+        }),
+        this.prisma.contact.count({ where }),
+      ]);
+
+      const totalPages = Math.max(1, Math.ceil(total / safeLimit));
+
+      return {
+        data: contacts.map((c) => this.formatResponse(c)),
+        meta: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages,
+          hasNextPage: safePage < totalPages,
+          hasPreviousPage: safePage > 1,
+        },
+      };
+    }
+
     const contacts = await this.prisma.contact.findMany({
       where,
-      include: {
-        account: {
-          select: { id: true, code: true, name: true },
-        },
-        accountManagers: {
-          include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
-        },
-      },
+      include,
       orderBy: { name: 'asc' },
     });
 

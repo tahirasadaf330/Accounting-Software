@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
+import { useDebounced } from '@/lib/useDebounced';
+import { Pagination } from '@/components/Pagination';
 import { Plus, Pencil, Trash2, FileText, Search } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useAuthStore } from '@/stores/auth.store';
@@ -95,13 +97,30 @@ function ConfirmModal({
   );
 }
 
+interface ContactsResponse {
+  data: Contact[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
 export default function ContactsPage() {
   const router = useRouter();
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  const debouncedSearch = useDebounced(search, 300);
 
   // Edit state
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -116,30 +135,35 @@ export default function ContactsPage() {
   const user = useAuthStore((s) => s.user);
   const canManage = user?.role === 'OWNER' || user?.role === 'CHIEF_ACCOUNTANT';
 
+  // Reset to page 1 whenever filters/search/page size change.
   useEffect(() => {
-    loadContacts();
-  }, []);
+    setPage(1);
+  }, [debouncedSearch, typeFilter, pageSize]);
 
   const loadContacts = async () => {
     setLoading(true);
     try {
-      const params: any = {};
-      if (search.trim()) params.search = search.trim();
+      const params: Record<string, string | number> = {
+        page,
+        limit: pageSize,
+      };
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       if (typeFilter) params.type = typeFilter;
-      const data = await api.get<Contact[]>('/contacts', params);
-      setContacts(Array.isArray(data) ? data : []);
+      const data = await api.get<ContactsResponse>('/contacts', params);
+      setContacts(data.data ?? []);
+      setTotal(data.meta?.total ?? data.data?.length ?? 0);
     } catch (err) {
       console.error('Failed to load contacts:', err);
+      setContacts([]);
+      setTotal(0);
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      loadContacts();
-    }, 300);
-    return () => clearTimeout(timeout);
-  }, [search, typeFilter]);
+    loadContacts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, typeFilter, page, pageSize]);
 
   const handleAddSuccess = () => {
     setShowAddModal(false);
@@ -221,7 +245,7 @@ export default function ContactsPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, email, or phone..."
+            placeholder="Search by name, email, phone, city, country, tax ID, or account..."
             className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
           />
         </div>
@@ -237,7 +261,8 @@ export default function ContactsPage() {
         </select>
       </div>
 
-      <div className="overflow-x-auto rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+      <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+        <div className="overflow-x-auto">
         {loading ? (
           <div className="flex items-center justify-center p-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
@@ -325,6 +350,16 @@ export default function ContactsPage() {
               ))}
             </tbody>
           </table>
+        )}
+        </div>
+        {!loading && total > 0 && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </div>
 

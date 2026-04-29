@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { Pagination } from '@/components/Pagination';
 import { Users, Plus, X, Mail, RefreshCw, XCircle } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
@@ -163,19 +164,27 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [usersTotal, setUsersTotal] = useState(0);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
     loadUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
+
+  useEffect(() => {
     loadInvitations();
   }, []);
 
   const loadUsers = async () => {
     try {
-      const data = await api.get<any>('/users');
+      const data = await api.get<any>('/users', { page, limit: pageSize });
       setUsers(data.data || data || []);
+      setUsersTotal(data.meta?.total ?? (Array.isArray(data) ? data.length : 0));
     } catch (err) {
       console.error('Failed to load users:', err);
     }
@@ -230,7 +239,8 @@ export default function UsersPage() {
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+      <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+        <div className="overflow-x-auto">
         {loading ? (
           <div className="flex items-center justify-center p-12">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
@@ -271,6 +281,16 @@ export default function UsersPage() {
               ))}
             </tbody>
           </table>
+        )}
+        </div>
+        {!loading && usersTotal > 0 && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={usersTotal}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </div>
 

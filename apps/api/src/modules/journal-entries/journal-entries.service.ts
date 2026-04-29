@@ -28,7 +28,7 @@ export class JournalEntriesService {
       isReversing,
       page = 1,
       limit = 20,
-      sortBy = 'entryDate',
+      sortBy = 'createdAt',
       sortOrder = 'desc',
     } = filters;
 
@@ -50,6 +50,16 @@ export class JournalEntriesService {
       where.OR = [
         { narration: { contains: search, mode: 'insensitive' } },
         { entryNumber: { contains: search, mode: 'insensitive' } },
+        {
+          voucher: {
+            is: { voucherNumber: { contains: search, mode: 'insensitive' } },
+          },
+        },
+        {
+          voucher: {
+            is: { reference: { contains: search, mode: 'insensitive' } },
+          },
+        },
       ];
     }
 
@@ -58,7 +68,7 @@ export class JournalEntriesService {
     }
 
     const allowedSortFields = ['entryDate', 'entryNumber', 'createdAt'];
-    const orderField = allowedSortFields.includes(sortBy) ? sortBy : 'entryDate';
+    const orderField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
 
     const skip = (page - 1) * limit;
 
@@ -87,7 +97,7 @@ export class JournalEntriesService {
             select: { id: true, entryNumber: true },
           },
         },
-        orderBy: { [orderField]: sortOrder },
+        orderBy: [{ [orderField]: sortOrder }, { id: 'desc' }],
         skip,
         take: limit,
       }),
