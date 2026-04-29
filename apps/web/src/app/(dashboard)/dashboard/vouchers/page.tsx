@@ -18,6 +18,7 @@ interface Voucher {
   narration: string;
   totalAmount: string;
   currencyCode: string;
+  createdAt: string;
   createdBy?: { firstName: string; lastName: string };
 }
 
@@ -128,6 +129,14 @@ export default function VouchersPage() {
   }, []);
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString();
+  const formatDateTime = (d: string) =>
+    new Date(d).toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   const formatAmount = (amount: string, currency: string) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(amount));
 
@@ -243,6 +252,7 @@ export default function VouchersPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Narration</th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Created</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -269,6 +279,9 @@ export default function VouchersPage() {
                       <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', statusColors[v.status])}>
                         {v.status.replace('_', ' ')}
                       </span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
+                      {formatDateTime(v.createdAt)}
                     </td>
                   </tr>
                 ))}
