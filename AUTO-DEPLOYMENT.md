@@ -153,7 +153,7 @@ pnpm --filter api build
 # Step 6: Build web (depends on shared dist/)
 echo ""
 echo "--- [6/7] Building web ---"
-pnpm --filter web build
+NEXT_PUBLIC_API_URL="https://accounting.voipsystem.org/api/v1" pnpm --filter web build
 
 # Step 7: Run database migrations (deploy = apply pending migrations, no shadow DB required)
 echo ""
