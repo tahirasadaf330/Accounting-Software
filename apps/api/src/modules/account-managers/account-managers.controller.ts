@@ -46,12 +46,18 @@ export class AccountManagersController {
   @ApiResponse({ status: 200, description: 'List of account managers' })
   @ApiQuery({ name: 'search', required: false, description: 'Search by name or email' })
   @ApiQuery({ name: 'isActive', required: false, description: 'Filter by active status' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
   findAll(
     @TenantId() tenantId: string,
     @Query('search') search?: string,
     @Query('isActive') isActive?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.service.findAll(tenantId, search, isActive);
+    const pageNum = page !== undefined ? Number(page) : undefined;
+    const limitNum = limit !== undefined ? Number(limit) : undefined;
+    return this.service.findAll(tenantId, search, isActive, pageNum, limitNum);
   }
 
   @Get(':id')

@@ -33,7 +33,13 @@ export class AccountManagersService {
     return this.formatResponse(am);
   }
 
-  async findAll(tenantId: string, search?: string, isActive?: string) {
+  async findAll(
+    tenantId: string,
+    search?: string,
+    isActive?: string,
+    page?: number,
+    limit?: number,
+  ) {
     const where: any = { tenantId };
 
     if (search) {
@@ -45,6 +51,38 @@ export class AccountManagersService {
 
     if (isActive !== undefined) {
       where.isActive = isActive === 'true';
+    }
+
+    // Paginated mode: only when caller explicitly supplied page/limit so the
+    // existing array-shaped contract used by dropdowns keeps working.
+    if (page !== undefined || limit !== undefined) {
+      const safePage = Math.max(1, Number(page ?? 1) || 1);
+      const safeLimit = Math.min(100, Math.max(1, Number(limit ?? 25) || 25));
+      const skip = (safePage - 1) * safeLimit;
+
+      const [accountManagers, total] = await this.prisma.$transaction([
+        this.prisma.accountManager.findMany({
+          where,
+          orderBy: [{ name: 'asc' }, { id: 'asc' }],
+          skip,
+          take: safeLimit,
+        }),
+        this.prisma.accountManager.count({ where }),
+      ]);
+
+      const totalPages = Math.max(1, Math.ceil(total / safeLimit));
+
+      return {
+        data: accountManagers.map(this.formatResponse),
+        meta: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages,
+          hasNextPage: safePage < totalPages,
+          hasPreviousPage: safePage > 1,
+        },
+      };
     }
 
     const accountManagers = await this.prisma.accountManager.findMany({
