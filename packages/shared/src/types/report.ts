@@ -73,3 +73,49 @@ export interface StatementOfAccount {
   totalDebit: string;
   totalCredit: string;
 }
+
+export type AgingBucket = 'current' | '1-30' | '31-60' | '61-90' | '91+';
+
+export interface ARAPRow {
+  voucherId: string;
+  voucherNumber: string;
+  contactId: string;
+  contactName: string;
+  date: string;
+  dueDate: string | null;
+  totalAmount: string;
+  paidAmount: string;
+  outstandingAmount: string;
+  daysOverdue: number;
+  agingBucket: AgingBucket;
+  status: string;
+  reference: string | null;
+  narration: string;
+}
+
+export interface ARAPAgingSummary {
+  current: string;
+  days1to30: string;
+  days31to60: string;
+  days61to90: string;
+  days91plus: string;
+}
+
+export interface ARAPReport {
+  reportType: 'AR' | 'AP';
+  asOfDate: string;
+  currency: string;
+  rows: ARAPRow[];
+  summary: {
+    totalInvoiced: string;
+    totalPaid: string;
+    totalOutstanding: string;
+    aging: ARAPAgingSummary;
+  };
+  generatedAt: string;
+  filters: {
+    asOfDate: string | null;
+    contactId: string | null;
+    showOutstandingOnly: boolean;
+  };
+}

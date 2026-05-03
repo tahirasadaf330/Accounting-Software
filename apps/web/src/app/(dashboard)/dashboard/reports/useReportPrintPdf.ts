@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback } from 'react';
 
-type ReportType = 'trial-balance' | 'balance-sheet' | 'income-statement' | 'statement-of-account' | 'invoice-report';
+type ReportType = 'trial-balance' | 'balance-sheet' | 'income-statement' | 'statement-of-account' | 'invoice-report' | 'ar-report' | 'ap-report';
 
 const reportFileNames: Record<ReportType, string> = {
   'trial-balance': 'Trial_Balance',
@@ -8,9 +8,11 @@ const reportFileNames: Record<ReportType, string> = {
   'income-statement': 'Income_Statement',
   'statement-of-account': 'Statement_of_Account',
   'invoice-report': 'Invoice_Report',
+  'ar-report': 'AR_Report',
+  'ap-report': 'AP_Report',
 };
 
-const landscapeReports: ReportType[] = ['trial-balance', 'statement-of-account', 'invoice-report'];
+const landscapeReports: ReportType[] = ['trial-balance', 'statement-of-account', 'invoice-report', 'ar-report', 'ap-report'];
 
 export function useReportPrintPdf(reportType: ReportType) {
   const printRef = useRef<HTMLDivElement>(null);

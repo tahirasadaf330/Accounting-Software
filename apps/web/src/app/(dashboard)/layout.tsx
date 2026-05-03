@@ -34,6 +34,8 @@ import {
   TrendingUp,
   ScrollText,
   FileSpreadsheet,
+  ClipboardList,
+  ClipboardCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -72,6 +74,8 @@ const navigation: NavItem[] = [
       { name: 'Income Statement', href: '/dashboard/reports?report=income-statement', icon: TrendingUp },
       { name: 'Statement of Account', href: '/dashboard/reports?report=statement-of-account', icon: ScrollText },
       { name: 'Invoice Report', href: '/dashboard/reports?report=invoice-report', icon: FileSpreadsheet },
+      { name: 'AR Report', href: '/dashboard/reports?report=ar-report', icon: ClipboardList },
+      { name: 'AP Report', href: '/dashboard/reports?report=ap-report', icon: ClipboardCheck },
       { name: 'Netting Report', href: '/dashboard/reports/netting', icon: ArrowLeftRight },
     ],
   },

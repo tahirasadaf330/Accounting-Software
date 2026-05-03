@@ -1,7 +1,7 @@
 import React from 'react';
 import { formatCurrency } from '@/lib/formatCurrency';
 
-type ReportType = 'trial-balance' | 'balance-sheet' | 'income-statement' | 'statement-of-account' | 'invoice-report';
+type ReportType = 'trial-balance' | 'balance-sheet' | 'income-statement' | 'statement-of-account' | 'invoice-report' | 'ar-report' | 'ap-report';
 
 interface ReportPrintLayoutProps {
   reportType: ReportType;
@@ -18,6 +18,8 @@ const reportTitles: Record<ReportType, string> = {
   'income-statement': 'Income Statement',
   'statement-of-account': 'Statement of Account',
   'invoice-report': 'Invoice Report',
+  'ar-report': 'Accounts Receivable (AR) Report',
+  'ap-report': 'Accounts Payable (AP) Report',
 };
 
 const thStyle: React.CSSProperties = {
@@ -59,7 +61,7 @@ const ReportPrintLayout = React.forwardRef<HTMLDivElement, ReportPrintLayoutProp
     const fmt = (v: number | string) => formatCurrency(v, baseCurrency);
 
     const periodLabel = () => {
-      if (reportType === 'trial-balance' || reportType === 'balance-sheet') {
+      if (reportType === 'trial-balance' || reportType === 'balance-sheet' || reportType === 'ar-report' || reportType === 'ap-report') {
         return `As of ${reportData?.asOfDate || dateRange.toDate}`;
       }
       if (reportType === 'invoice-report') {
@@ -76,7 +78,7 @@ const ReportPrintLayout = React.forwardRef<HTMLDivElement, ReportPrintLayoutProp
           color: '#000',
           backgroundColor: '#fff',
           padding: '32px',
-          maxWidth: reportType === 'trial-balance' || reportType === 'statement-of-account' || reportType === 'invoice-report' ? '1100px' : '800px',
+          maxWidth: reportType === 'trial-balance' || reportType === 'statement-of-account' || reportType === 'invoice-report' || reportType === 'ar-report' || reportType === 'ap-report' ? '1100px' : '800px',
           margin: '0 auto',
           fontSize: '13px',
           lineHeight: '1.5',
@@ -489,6 +491,75 @@ const ReportPrintLayout = React.forwardRef<HTMLDivElement, ReportPrintLayoutProp
                 </tbody>
               </table>
             )}
+          </div>
+        )}
+
+        {/* AR / AP Report */}
+        {(reportType === 'ar-report' || reportType === 'ap-report') && (
+          <div>
+            {/* Aging summary */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px', fontSize: '12px' }}>
+              <thead>
+                <tr>
+                  {['Current', '1–30 Days', '31–60 Days', '61–90 Days', '91+ Days', 'Total Outstanding'].map((h) => (
+                    <th key={h} style={{ ...thStyle, textAlign: 'right' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={sectionTotalRowStyle}>
+                  {[
+                    reportData?.summary?.aging?.current,
+                    reportData?.summary?.aging?.days1to30,
+                    reportData?.summary?.aging?.days31to60,
+                    reportData?.summary?.aging?.days61to90,
+                    reportData?.summary?.aging?.days91plus,
+                    reportData?.summary?.totalOutstanding,
+                  ].map((val, i) => (
+                    <td key={i} style={{ ...tdRightStyle, fontWeight: 700 }}>{fmt(val || 0)}</td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Detail rows */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '24px', fontSize: '11px' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...thStyle, textAlign: 'left', width: '18%' }}>{reportType === 'ar-report' ? 'Customer' : 'Vendor'}</th>
+                  <th style={{ ...thStyle, textAlign: 'left', width: '12%' }}>Invoice #</th>
+                  <th style={{ ...thStyle, textAlign: 'left', width: '9%' }}>Date</th>
+                  <th style={{ ...thStyle, textAlign: 'left', width: '9%' }}>Due Date</th>
+                  <th style={{ ...thStyle, textAlign: 'right', width: '13%' }}>Invoice Amt</th>
+                  <th style={{ ...thStyle, textAlign: 'right', width: '11%' }}>Paid</th>
+                  <th style={{ ...thStyle, textAlign: 'right', width: '13%' }}>Outstanding</th>
+                  <th style={{ ...thStyle, textAlign: 'left', width: '15%' }}>Aging</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportData?.rows?.map((row: any, i: number) => (
+                  <tr key={i}>
+                    <td style={tdStyle}>{row.contactName}</td>
+                    <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{row.voucherNumber}</td>
+                    <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>{row.date}</td>
+                    <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>{row.dueDate ?? '—'}</td>
+                    <td style={tdRightStyle}>{fmt(row.totalAmount)}</td>
+                    <td style={tdRightStyle}>{fmt(row.paidAmount)}</td>
+                    <td style={{ ...tdRightStyle, fontWeight: Number(row.outstandingAmount) > 0 ? 700 : 400, color: Number(row.outstandingAmount) > 0 ? '#b91c1c' : '#15803d' }}>{fmt(row.outstandingAmount)}</td>
+                    <td style={tdStyle}>{row.agingBucket}{row.daysOverdue > 0 ? ` (${row.daysOverdue}d)` : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={sectionTotalRowStyle}>
+                  <td colSpan={4} style={{ ...tdStyle, fontWeight: 700 }}>Totals</td>
+                  <td style={{ ...tdRightStyle, fontWeight: 700 }}>{fmt(reportData?.summary?.totalInvoiced || 0)}</td>
+                  <td style={{ ...tdRightStyle, fontWeight: 700 }}>{fmt(reportData?.summary?.totalPaid || 0)}</td>
+                  <td style={{ ...tdRightStyle, fontWeight: 700 }}>{fmt(reportData?.summary?.totalOutstanding || 0)}</td>
+                  <td style={tdStyle} />
+                </tr>
+              </tfoot>
+            </table>
           </div>
         )}
 
