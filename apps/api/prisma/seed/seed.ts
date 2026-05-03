@@ -53,13 +53,13 @@ async function main() {
   });
   console.log(`  ✓ Super Admin created: ${superAdmin.email}`);
 
-  // 3. Create a demo tenant
+  // 3. Create Hayo tenant
   const demoTenant = await prisma.tenant.upsert({
-    where: { slug: 'demo-company' },
+    where: { slug: 'hayo' },
     update: {},
     create: {
-      name: 'Demo Company Ltd.',
-      slug: 'demo-company',
+      name: 'Hayo',
+      slug: 'hayo',
       baseCurrency: 'USD',
       fiscalYearStartMonth: 1,
       timezone: 'America/New_York',
@@ -67,58 +67,33 @@ async function main() {
       status: TenantStatus.ACTIVE,
     },
   });
-  console.log(`  ✓ Demo tenant created: ${demoTenant.name}`);
+  console.log(`  ✓ Tenant created: ${demoTenant.name}`);
 
-  // 4. Create demo tenant Owner user
-  const ownerPassword = await argon2.hash('DemoOwner123!');
-  const owner = await prisma.user.upsert({
-    where: { email: 'owner@demo-company.com' },
-    update: {},
-    create: {
-      email: 'owner@demo-company.com',
-      passwordHash: ownerPassword,
-      firstName: 'John',
-      lastName: 'Owner',
-      role: Role.OWNER,
-      status: UserStatus.ACTIVE,
-      tenantId: demoTenant.id,
-    },
-  });
-  console.log(`  ✓ Demo Owner created: ${owner.email}`);
+  // 4. Create Hayo tenant users
+  const defaultPassword = await argon2.hash('Hayo@12345');
 
-  // 5. Create demo Chief Accountant
-  const chiefPassword = await argon2.hash('DemoChief123!');
-  const chief = await prisma.user.upsert({
-    where: { email: 'chief@demo-company.com' },
-    update: {},
-    create: {
-      email: 'chief@demo-company.com',
-      passwordHash: chiefPassword,
-      firstName: 'Sarah',
-      lastName: 'Chief',
-      role: Role.CHIEF_ACCOUNTANT,
-      status: UserStatus.ACTIVE,
-      tenantId: demoTenant.id,
-    },
-  });
-  console.log(`  ✓ Demo Chief Accountant created: ${chief.email}`);
+  const hayoUsers = [
+    { email: 'arsalan.ali@hayo.net', firstName: 'Arsalan', lastName: 'Ali' },
+    { email: 'faisal.hussain@hayo.net', firstName: 'Faisal', lastName: 'Hussain' },
+    { email: 'ahmad.hassan@hayo.net', firstName: 'Ahmad', lastName: 'Hassan' },
+  ];
 
-  // 6. Create demo Accountant
-  const accountantPassword = await argon2.hash('DemoAcct123!');
-  const accountant = await prisma.user.upsert({
-    where: { email: 'accountant@demo-company.com' },
-    update: {},
-    create: {
-      email: 'accountant@demo-company.com',
-      passwordHash: accountantPassword,
-      firstName: 'Mike',
-      lastName: 'Accountant',
-      role: Role.ACCOUNTANT,
-      status: UserStatus.ACTIVE,
-      tenantId: demoTenant.id,
-    },
-  });
-  console.log(`  ✓ Demo Accountant created: ${accountant.email}`);
+  for (const u of hayoUsers) {
+    const user = await prisma.user.upsert({
+      where: { email: u.email },
+      update: {},
+      create: {
+        email: u.email,
+        passwordHash: defaultPassword,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        role: Role.OWNER,
+        status: UserStatus.ACTIVE,
+        tenantId: demoTenant.id,
+      },
+    });
+    console.log(`  ✓ Owner created: ${user.email}`);
+  }
 
   // 7. Seed Chart of Accounts for demo tenant
   const accounts = [
