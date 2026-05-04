@@ -138,9 +138,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         >
           <Menu className="h-5 w-5" />
         </button>
-        <p className="flex-1 truncate text-sm font-semibold text-gray-900">
-          {tenant?.name || 'Accounting SaaS'}
-        </p>
+        <div className="flex flex-1 items-center">
+          <img src="/hayo-logo.jpg" alt="HAYO" className="h-7 w-auto" />
+        </div>
         <NotificationBell />
       </div>
 
@@ -159,14 +159,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        {/* Logo / tenant */}
+        {/* Logo */}
         <div className="flex h-16 items-center justify-between border-b border-gray-200 px-4">
-          <div className="truncate">
-            <p className="truncate text-sm font-semibold text-gray-900">
-              {tenant?.name || 'Accounting SaaS'}
-            </p>
-            <p className="truncate text-xs text-gray-500">{user?.email}</p>
-          </div>
+          <img
+            src="/hayo-logo.jpg"
+            alt="HAYO"
+            className="h-8 w-auto"
+          />
           <button
             onClick={() => setSidebarOpen(false)}
             className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 md:hidden"
