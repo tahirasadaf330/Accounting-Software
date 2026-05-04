@@ -18,6 +18,7 @@ interface Tenant {
   slug: string;
   baseCurrency: string;
   status?: string;
+  hasLogo?: boolean;
 }
 
 interface AuthState {

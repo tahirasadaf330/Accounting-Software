@@ -121,6 +121,10 @@ model Tenant {
   taxId               String?      @db.VarChar(100)
   registrationNumber  String?      @db.VarChar(100)
 
+  // Branding
+  logoPath            String?      @db.VarChar(500)
+  logoMimeType        String?      @db.VarChar(100)
+
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
 
