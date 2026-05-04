@@ -22,7 +22,7 @@ interface Account {
 interface Contact {
   id: string;
   name: string;
-  contactType: string;
+  type: string;
   isActive: boolean;
 }
 
@@ -302,6 +302,7 @@ export default function ReportsPage() {
   const [activeReport, setActiveReport] = useState<ReportType>('trial-balance');
   const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState({
     fromDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
     toDate: new Date().toISOString().split('T')[0],
@@ -372,6 +373,7 @@ export default function ReportsPage() {
   const generateReport = async () => {
     setLoading(true);
     setReportData(null);
+    setError(null);
     try {
       let data;
       switch (activeReport) {
@@ -421,8 +423,14 @@ export default function ReportsPage() {
         }
       }
       setReportData(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to generate report:', err);
+      const message =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to generate report. Please check your filters and try again.';
+      setError(Array.isArray(message) ? message.join(', ') : String(message));
     }
     setLoading(false);
   };
@@ -441,7 +449,7 @@ export default function ReportsPage() {
         {reports.map((r) => (
           <button
             key={r.id}
-            onClick={() => { setActiveReport(r.id); setReportData(null); setSelectedAccountId(''); setInvoiceFilters({ type: '', contactId: '', periodStart: '', periodEnd: '' }); setArApFilters({ contactId: '', showOutstandingOnly: true }); }}
+            onClick={() => { setActiveReport(r.id); setReportData(null); setError(null); setSelectedAccountId(''); setInvoiceFilters({ type: '', contactId: '', periodStart: '', periodEnd: '' }); setArApFilters({ contactId: '', showOutstandingOnly: true }); }}
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium',
               activeReport === r.id
@@ -525,8 +533,8 @@ export default function ReportsPage() {
               <ContactCombobox
                 contacts={contacts.filter((c) =>
                   activeReport === 'ar-report'
-                    ? c.contactType === 'CUSTOMER' || c.contactType === 'BOTH'
-                    : c.contactType === 'VENDOR' || c.contactType === 'BOTH',
+                    ? c.type === 'CUSTOMER' || c.type === 'BOTH'
+                    : c.type === 'VENDOR' || c.type === 'BOTH',
                 )}
                 value={arApFilters.contactId}
                 onChange={(id) => setArApFilters((p) => ({ ...p, contactId: id }))}
@@ -929,7 +937,13 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {!reportData && !loading && (
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {!reportData && !loading && !error && (
         <div className="flex flex-col items-center justify-center rounded-xl bg-white p-12 shadow-sm ring-1 ring-gray-200">
           <BarChart3 className="mb-4 h-12 w-12 text-gray-300" />
           <p className="text-sm text-gray-500">Select a report and date range, then click Generate</p>
