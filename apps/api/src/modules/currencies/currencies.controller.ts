@@ -25,8 +25,17 @@ export class CurrenciesController {
 
   @Get()
   @ApiOperation({ summary: 'List all currencies' })
-  async findAll() {
-    return this.currenciesService.findAll();
+  @ApiQuery({ name: 'search', required: false, description: 'Search by code or name' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async findAll(
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page !== undefined ? Number(page) : undefined;
+    const limitNum = limit !== undefined ? Number(limit) : undefined;
+    return this.currenciesService.findAll(search, pageNum, limitNum);
   }
 
   @Get('exchange-rates/latest')

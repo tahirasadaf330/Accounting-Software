@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { Pagination } from '@/components/Pagination';
+import { useDebounced } from '@/lib/useDebounced';
 import { Plus, Pencil, Trash2, Search } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 
@@ -187,38 +189,59 @@ function AMModal({
   );
 }
 
+interface AccountManagersResponse {
+  data: AccountManager[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
 export default function AccountManagersPage() {
   const user = useAuthStore((s) => s.user);
   const canManage = user?.role === 'OWNER' || user?.role === 'CHIEF_ACCOUNTANT';
 
   const [managers, setManagers] = useState<AccountManager[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [modalOpen, setModalOpen] = useState(false);
   const [editData, setEditData] = useState<AccountManager | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AccountManager | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  const debouncedSearch = useDebounced(search, 300);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, pageSize]);
+
   const loadManagers = async () => {
     setLoading(true);
     try {
-      const data = await api.get<AccountManager[]>('/account-managers', search ? { search } : undefined);
-      setManagers(data);
+      const params: Record<string, string | number> = { page, limit: pageSize };
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+      const data = await api.get<AccountManagersResponse>('/account-managers', params);
+      setManagers(data.data ?? []);
+      setTotal(data.meta?.total ?? data.data?.length ?? 0);
     } catch {
-      // ignore
+      setManagers([]);
+      setTotal(0);
     }
     setLoading(false);
   };
 
   useEffect(() => {
     loadManagers();
-  }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => loadManagers(), 300);
-    return () => clearTimeout(timer);
-  }, [search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, page, pageSize]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -261,7 +284,7 @@ export default function AccountManagersPage() {
         </div>
       </div>
 
-      <div className="rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+      <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -327,6 +350,15 @@ export default function AccountManagersPage() {
             </tbody>
           </table>
         </div>
+        {!loading && total > 0 && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
       </div>
 
       <AMModal

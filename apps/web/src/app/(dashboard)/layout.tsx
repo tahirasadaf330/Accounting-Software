@@ -3,10 +3,41 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { useNotificationStore } from '@/stores/notification.store';
 import { cn } from '@/lib/cn';
 import { NotificationBell } from './components/notification-bell';
+
+const DEFAULT_LOGO = '/hayo-logo.jpg';
+
+function useTenantLogo(hasLogo: boolean | undefined) {
+  const [url, setUrl] = useState<string>(DEFAULT_LOGO);
+  useEffect(() => {
+    if (!hasLogo) {
+      setUrl(DEFAULT_LOGO);
+      return;
+    }
+    let blobUrl: string | null = null;
+    let cancelled = false;
+    api
+      .getFileUrl('/tenant/profile/logo')
+      .then((u) => {
+        if (cancelled) {
+          URL.revokeObjectURL(u);
+          return;
+        }
+        blobUrl = u;
+        setUrl(u);
+      })
+      .catch(() => setUrl(DEFAULT_LOGO));
+    return () => {
+      cancelled = true;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
+  }, [hasLogo]);
+  return url;
+}
 import {
   LayoutDashboard,
   BookOpen,
@@ -93,6 +124,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const resetNotifications = useNotificationStore((s) => s.reset);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<string[]>(['Vouchers', 'Reports']);
+  const logoUrl = useTenantLogo(tenant?.hasLogo);
 
   const toggleSection = (name: string) => {
     setExpandedSections((prev) =>
@@ -138,9 +170,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         >
           <Menu className="h-5 w-5" />
         </button>
-        <p className="flex-1 truncate text-sm font-semibold text-gray-900">
-          {tenant?.name || 'Accounting SaaS'}
-        </p>
+        <div className="flex flex-1 items-center">
+          <img src={logoUrl} alt={tenant?.name || 'Logo'} className="h-7 w-auto" />
+        </div>
         <NotificationBell />
       </div>
 
@@ -159,14 +191,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        {/* Logo / tenant */}
+        {/* Logo */}
         <div className="flex h-16 items-center justify-between border-b border-gray-200 px-4">
-          <div className="truncate">
-            <p className="truncate text-sm font-semibold text-gray-900">
-              {tenant?.name || 'Accounting SaaS'}
-            </p>
-            <p className="truncate text-xs text-gray-500">{user?.email}</p>
-          </div>
+          <img
+            src={logoUrl}
+            alt={tenant?.name || 'Logo'}
+            className="h-8 w-auto"
+          />
           <button
             onClick={() => setSidebarOpen(false)}
             className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 md:hidden"

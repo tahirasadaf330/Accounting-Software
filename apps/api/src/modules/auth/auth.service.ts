@@ -98,6 +98,7 @@ export class AuthService {
         slug: result.tenant.slug,
         baseCurrency: result.tenant.baseCurrency,
         status: result.tenant.status,
+        hasLogo: !!result.tenant.logoPath,
       },
       ...tokens,
     };
@@ -160,6 +161,7 @@ export class AuthService {
             slug: user.tenant.slug,
             baseCurrency: user.tenant.baseCurrency,
             status: user.tenant.status,
+            hasLogo: !!user.tenant.logoPath,
           }
         : null,
       ...tokens,
@@ -323,6 +325,7 @@ export class AuthService {
             slug: true,
             baseCurrency: true,
             status: true,
+            logoPath: true,
           },
         },
       },
@@ -332,7 +335,20 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    return user;
+    const { tenant, ...rest } = user;
+    return {
+      ...rest,
+      tenant: tenant
+        ? {
+            id: tenant.id,
+            name: tenant.name,
+            slug: tenant.slug,
+            baseCurrency: tenant.baseCurrency,
+            status: tenant.status,
+            hasLogo: !!tenant.logoPath,
+          }
+        : null,
+    };
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
@@ -504,6 +520,7 @@ export class AuthService {
         slug: invitation.tenant.slug,
         baseCurrency: invitation.tenant.baseCurrency,
         status: invitation.tenant.status,
+        hasLogo: !!(invitation.tenant as { logoPath?: string | null }).logoPath,
       },
       ...tokens,
     };

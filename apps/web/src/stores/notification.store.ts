@@ -29,7 +29,7 @@ interface NotificationState {
   meta: PaginationMeta | null;
   isDropdownOpen: boolean;
 
-  fetchNotifications: (page?: number) => Promise<void>;
+  fetchNotifications: (page?: number, limit?: number) => Promise<void>;
   fetchUnreadCount: () => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
@@ -43,11 +43,11 @@ export const useNotificationStore = create<NotificationState>()((set, get) => ({
   meta: null,
   isDropdownOpen: false,
 
-  fetchNotifications: async (page = 1) => {
+  fetchNotifications: async (page = 1, limit = 20) => {
     try {
       const data = await api.get<{ data: Notification[]; meta: PaginationMeta }>(
         '/notifications',
-        { page, limit: 20 },
+        { page, limit },
       );
       set({ notifications: data.data, meta: data.meta });
     } catch (error) {

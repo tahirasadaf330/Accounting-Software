@@ -12,8 +12,50 @@ export class CurrenciesService {
   /**
    * List all currencies (global, not tenant-specific).
    */
-  async findAll() {
+  async findAll(search?: string, page?: number, limit?: number) {
+    const where: Prisma.CurrencyWhereInput = {};
+
+    if (search) {
+      where.OR = [
+        { code: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    // Paginated mode: only when caller explicitly supplied page/limit so the
+    // existing array-shaped contract used by dropdowns keeps working.
+    if (page !== undefined || limit !== undefined) {
+      const safePage = Math.max(1, Number(page ?? 1) || 1);
+      const safeLimit = Math.min(100, Math.max(1, Number(limit ?? 25) || 25));
+      const skip = (safePage - 1) * safeLimit;
+
+      const [currencies, total] = await this.prisma.$transaction([
+        this.prisma.currency.findMany({
+          where,
+          orderBy: { code: 'asc' },
+          skip,
+          take: safeLimit,
+        }),
+        this.prisma.currency.count({ where }),
+      ]);
+
+      const totalPages = Math.max(1, Math.ceil(total / safeLimit));
+
+      return {
+        data: currencies,
+        meta: {
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages,
+          hasNextPage: safePage < totalPages,
+          hasPreviousPage: safePage > 1,
+        },
+      };
+    }
+
     return this.prisma.currency.findMany({
+      where,
       orderBy: { code: 'asc' },
     });
   }
