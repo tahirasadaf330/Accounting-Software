@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNotificationStore } from '@/stores/notification.store';
+import { Pagination } from '@/components/Pagination';
 import { cn } from '@/lib/cn';
 import {
   Bell,
@@ -11,8 +12,6 @@ import {
   XCircle,
   RotateCcw,
   Check,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 
 const typeConfig: Record<string, { icon: typeof Bell; colorClass: string }> = {
@@ -37,10 +36,16 @@ export default function NotificationsPage() {
   const router = useRouter();
   const notifications = useNotificationStore((s) => s.notifications);
   const meta = useNotificationStore((s) => s.meta);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
-    useNotificationStore.getState().fetchNotifications();
-  }, []);
+    useNotificationStore.getState().fetchNotifications(page, pageSize);
+  }, [page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize]);
 
   const handleNotificationClick = (
     notification: (typeof notifications)[0],
@@ -60,10 +65,6 @@ export default function NotificationsPage() {
   const handleMarkAllAsRead = () => {
     useNotificationStore.getState().markAllAsRead();
     useNotificationStore.getState().fetchUnreadCount();
-  };
-
-  const handlePageChange = (page: number) => {
-    useNotificationStore.getState().fetchNotifications(page);
   };
 
   return (
@@ -154,34 +155,16 @@ export default function NotificationsPage() {
             })}
           </ul>
         )}
+        {meta && meta.total > 0 && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={meta.total}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
+        )}
       </div>
-
-      {/* Pagination */}
-      {meta && meta.totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between">
-          <p className="text-sm text-gray-600">
-            Page {meta.page} of {meta.totalPages} ({meta.total} notifications)
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => handlePageChange(meta.page - 1)}
-              disabled={!meta.hasPreviousPage}
-              className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Previous
-            </button>
-            <button
-              onClick={() => handlePageChange(meta.page + 1)}
-              disabled={!meta.hasNextPage}
-              className="flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Next
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

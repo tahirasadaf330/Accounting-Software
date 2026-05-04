@@ -4,6 +4,8 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
+import { promises as fs } from 'fs';
+import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantStatus } from '@prisma/client';
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -12,6 +14,17 @@ import { UpdateTenantProfileDto } from './dto/update-tenant-profile.dto';
 import { OnboardTenantDto } from './dto/onboard-tenant.dto';
 import { SetupTenantDto } from './dto/setup-tenant.dto';
 import { PAGINATION_DEFAULTS, FISCAL_MONTHS } from '@accounting-saas/shared';
+
+const UPLOADS_BASE = path.join(process.cwd(), 'uploads');
+const LOGO_ALLOWED_MIME = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/svg+xml',
+  'image/gif',
+]);
+const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
 @Injectable()
 export class TenantsService {
@@ -556,5 +569,98 @@ export class TenantsService {
       contacts: contactCount,
       bankAccounts: bankAccountCount,
     };
+  }
+
+  async uploadLogo(
+    tenantId: string,
+    file: { filename: string; mimetype: string; buffer: Buffer },
+  ) {
+    if (!LOGO_ALLOWED_MIME.has(file.mimetype)) {
+      throw new BadRequestException(
+        `File type "${file.mimetype}" is not allowed. Allowed: PNG, JPEG, WebP, SVG, GIF`,
+      );
+    }
+    if (file.buffer.length === 0) {
+      throw new BadRequestException('Uploaded file is empty');
+    }
+    if (file.buffer.length > LOGO_MAX_BYTES) {
+      throw new BadRequestException(
+        `Logo must be ${LOGO_MAX_BYTES / 1024 / 1024} MB or smaller`,
+      );
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const ext = mimeToExt(file.mimetype);
+    const relativeDir = path.join(tenantId, 'images');
+    const absoluteDir = path.join(UPLOADS_BASE, relativeDir);
+    const fileName = `logo${ext}`;
+    const relativePath = path.join(relativeDir, fileName);
+    const absolutePath = path.join(absoluteDir, fileName);
+
+    await fs.mkdir(absoluteDir, { recursive: true });
+
+    if (tenant.logoPath && tenant.logoPath !== relativePath) {
+      const oldAbs = path.join(UPLOADS_BASE, tenant.logoPath);
+      await fs.unlink(oldAbs).catch(() => undefined);
+    }
+
+    await fs.writeFile(absolutePath, file.buffer);
+
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { logoPath: relativePath, logoMimeType: file.mimetype },
+      select: { id: true, logoPath: true, logoMimeType: true },
+    });
+  }
+
+  async getLogoForDownload(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { logoPath: true, logoMimeType: true },
+    });
+    if (!tenant?.logoPath || !tenant.logoMimeType) {
+      throw new NotFoundException('Logo not set for this tenant');
+    }
+    const absolutePath = path.join(UPLOADS_BASE, tenant.logoPath);
+    return { absolutePath, mimeType: tenant.logoMimeType };
+  }
+
+  async deleteLogo(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { logoPath: true },
+    });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    if (tenant.logoPath) {
+      const abs = path.join(UPLOADS_BASE, tenant.logoPath);
+      await fs.unlink(abs).catch(() => undefined);
+    }
+
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { logoPath: null, logoMimeType: null },
+      select: { id: true },
+    });
+  }
+}
+
+function mimeToExt(mime: string): string {
+  switch (mime) {
+    case 'image/png':
+      return '.png';
+    case 'image/jpeg':
+    case 'image/jpg':
+      return '.jpg';
+    case 'image/webp':
+      return '.webp';
+    case 'image/svg+xml':
+      return '.svg';
+    case 'image/gif':
+      return '.gif';
+    default:
+      return '';
   }
 }

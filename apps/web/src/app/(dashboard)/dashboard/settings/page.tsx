@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
-import { Building2, Save, X, ShieldCheck, ShieldOff, Loader2, Copy, Check } from 'lucide-react';
+import { Building2, Save, X, ShieldCheck, ShieldOff, Loader2, Copy, Check, Image as ImageIcon, Upload, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 function ChangePasswordModal({ onClose }: { onClose: () => void }) {
@@ -358,6 +358,140 @@ function MfaModal({ enabled, onClose, onSuccess }: { enabled: boolean; onClose: 
               </button>
             </div>
           </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LogoSection({ isOwner }: { isOwner: boolean }) {
+  const tenant = useAuthStore((s) => s.tenant);
+  const fetchProfile = useAuthStore((s) => s.fetchProfile);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let revoked: string | null = null;
+    if (tenant?.hasLogo) {
+      api.getFileUrl('/tenant/profile/logo').then((u) => {
+        revoked = u;
+        setPreviewUrl(u);
+      }).catch(() => setPreviewUrl(null));
+    } else {
+      setPreviewUrl(null);
+    }
+    return () => {
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
+  }, [tenant?.hasLogo]);
+
+  const handleFile = async (file: File) => {
+    setError(null);
+    setSuccess(null);
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Logo must be 2 MB or smaller');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.uploadFiles('/tenant/profile/logo', [file]);
+      await fetchProfile();
+      setSuccess('Logo updated');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Upload failed');
+    }
+    setBusy(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRemove = async () => {
+    setError(null);
+    setSuccess(null);
+    setBusy(true);
+    try {
+      await api.delete('/tenant/profile/logo');
+      await fetchProfile();
+      setSuccess('Logo removed');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to remove logo');
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
+      <div className="flex items-center gap-3">
+        <div className="rounded-lg bg-primary-100 p-2">
+          <ImageIcon className="h-5 w-5 text-primary-600" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Company Logo</h2>
+          <p className="text-xs text-gray-500">
+            {isOwner
+              ? 'PNG, JPEG, WebP, SVG, or GIF — up to 2 MB. Shown in the sidebar and header.'
+              : 'Only the organization owner can change the logo.'}
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          {success}
+        </div>
+      )}
+
+      <div className="mt-6 flex items-center gap-6">
+        <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border border-dashed border-gray-300 bg-gray-50">
+          {previewUrl ? (
+            <img src={previewUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
+          ) : (
+            <ImageIcon className="h-8 w-8 text-gray-300" />
+          )}
+        </div>
+
+        {isOwner && (
+          <div className="flex flex-col gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml,image/gif"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFile(file);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={busy}
+              className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4" />
+              {tenant?.hasLogo ? 'Replace Logo' : 'Upload Logo'}
+            </button>
+            {tenant?.hasLogo && (
+              <button
+                type="button"
+                onClick={handleRemove}
+                disabled={busy}
+                className="flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                Remove
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -754,6 +888,9 @@ export default function SettingsPage() {
             )}
           </div>
         )}
+
+        {/* Company Logo */}
+        {tenant && <LogoSection isOwner={isOwner} />}
 
         {/* Security */}
         <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
