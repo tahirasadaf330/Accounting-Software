@@ -26,7 +26,7 @@ interface Contact {
   isActive: boolean;
 }
 
-type ReportType = 'trial-balance' | 'balance-sheet' | 'income-statement' | 'statement-of-account' | 'invoice-report';
+type ReportType = 'trial-balance' | 'balance-sheet' | 'income-statement' | 'statement-of-account' | 'invoice-report' | 'ar-report' | 'ap-report';
 
 function AccountCombobox({
   accounts,
@@ -176,6 +176,125 @@ function ContactCombobox({
   );
 }
 
+const AGING_LABELS: Record<string, string> = {
+  current: 'Current',
+  '1-30': '1–30 Days',
+  '31-60': '31–60 Days',
+  '61-90': '61–90 Days',
+  '91+': '91+ Days',
+};
+
+const AGING_COLORS: Record<string, string> = {
+  current: 'bg-green-50 ring-green-200 text-green-700',
+  '1-30': 'bg-yellow-50 ring-yellow-200 text-yellow-700',
+  '31-60': 'bg-orange-50 ring-orange-200 text-orange-700',
+  '61-90': 'bg-red-50 ring-red-200 text-red-700',
+  '91+': 'bg-red-100 ring-red-300 text-red-800',
+};
+
+const AGING_BADGE: Record<string, string> = {
+  current: 'bg-green-100 text-green-700',
+  '1-30': 'bg-yellow-100 text-yellow-700',
+  '31-60': 'bg-orange-100 text-orange-700',
+  '61-90': 'bg-red-100 text-red-700',
+  '91+': 'bg-red-200 text-red-800',
+};
+
+function ARAPReportView({ data, formatAmount }: { data: any; formatAmount: (v: any) => string }) {
+  const isAR = data.reportType === 'AR';
+  const title = isAR ? 'Accounts Receivable (AR) Report' : 'Accounts Payable (AP) Report';
+  const contactLabel = isAR ? 'Customer' : 'Vendor';
+
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-semibold">
+        {title}
+        <span className="ml-2 text-sm font-normal text-gray-500">as of {data.asOfDate}</span>
+      </h2>
+      {data.filters?.showOutstandingOnly && (
+        <p className="mb-4 text-xs text-gray-400">Showing outstanding balances only</p>
+      )}
+
+      {/* Aging summary cards */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {(['current', '1-30', '31-60', '61-90', '91+'] as const).map((bucket) => {
+          const key = bucket === 'current' ? 'current' : bucket === '1-30' ? 'days1to30' : bucket === '31-60' ? 'days31to60' : bucket === '61-90' ? 'days61to90' : 'days91plus';
+          return (
+            <div key={bucket} className={cn('rounded-lg p-3 ring-1', AGING_COLORS[bucket])}>
+              <p className="text-xs font-semibold uppercase">{AGING_LABELS[bucket]}</p>
+              <p className="mt-1 text-base font-bold">{formatAmount(data.summary.aging[key])}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Summary totals */}
+      <div className="mb-6 grid grid-cols-3 gap-4">
+        <div className="rounded-lg bg-gray-50 p-4 ring-1 ring-gray-200">
+          <p className="text-xs font-medium uppercase text-gray-500">Total Invoiced</p>
+          <p className="mt-1 text-lg font-bold text-gray-800">{formatAmount(data.summary.totalInvoiced)}</p>
+        </div>
+        <div className="rounded-lg bg-blue-50 p-4 ring-1 ring-blue-200">
+          <p className="text-xs font-medium uppercase text-blue-600">Total Paid</p>
+          <p className="mt-1 text-lg font-bold text-blue-800">{formatAmount(data.summary.totalPaid)}</p>
+        </div>
+        <div className={cn('rounded-lg p-4 ring-1', Number(data.summary.totalOutstanding) > 0 ? 'bg-red-50 ring-red-200' : 'bg-green-50 ring-green-200')}>
+          <p className={cn('text-xs font-medium uppercase', Number(data.summary.totalOutstanding) > 0 ? 'text-red-600' : 'text-green-600')}>Total Outstanding</p>
+          <p className={cn('mt-1 text-lg font-bold', Number(data.summary.totalOutstanding) > 0 ? 'text-red-800' : 'text-green-800')}>{formatAmount(data.summary.totalOutstanding)}</p>
+        </div>
+      </div>
+
+      {/* Detail table */}
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{contactLabel}</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Invoice #</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Due Date</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Invoice Amt</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Paid</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Outstanding</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Aging</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {data.rows?.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-400">
+                  No records found for the selected filters.
+                </td>
+              </tr>
+            )}
+            {data.rows?.map((row: any, i: number) => (
+              <tr key={i} className="hover:bg-gray-50">
+                <td className="px-4 py-2 font-medium text-gray-900">{row.contactName}</td>
+                <td className="whitespace-nowrap px-4 py-2 font-mono text-gray-500">{row.voucherNumber}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.date}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.dueDate ?? '—'}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-right text-gray-900">{formatAmount(row.totalAmount)}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-right text-blue-700">{formatAmount(row.paidAmount)}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-right font-semibold">
+                  <span className={Number(row.outstandingAmount) > 0 ? 'text-red-700' : 'text-green-600'}>
+                    {formatAmount(row.outstandingAmount)}
+                  </span>
+                </td>
+                <td className="whitespace-nowrap px-4 py-2">
+                  <span className={cn('rounded px-2 py-0.5 text-xs font-medium', AGING_BADGE[row.agingBucket])}>
+                    {AGING_LABELS[row.agingBucket]}
+                    {row.daysOverdue > 0 && <span className="ml-1 opacity-75">({row.daysOverdue}d)</span>}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const searchParams = useSearchParams();
   const tenant = useAuthStore((s) => s.tenant);
@@ -197,12 +316,18 @@ export default function ReportsPage() {
     periodStart: '',
     periodEnd: '',
   });
+  const [arApFilters, setArApFilters] = useState({
+    contactId: '',
+    showOutstandingOnly: true,
+  });
   const reports = [
     { id: 'trial-balance' as const, name: 'Trial Balance' },
     { id: 'balance-sheet' as const, name: 'Balance Sheet' },
     { id: 'income-statement' as const, name: 'Income Statement' },
     { id: 'statement-of-account' as const, name: 'Statement of Account' },
     { id: 'invoice-report' as const, name: 'Invoice Report' },
+    { id: 'ar-report' as const, name: 'AR Report' },
+    { id: 'ap-report' as const, name: 'AP Report' },
   ];
 
   const { printRef, handlePrint, handleExportPdf, isExporting } = useReportPrintPdf(activeReport);
@@ -215,6 +340,7 @@ export default function ReportsPage() {
       setReportData(null);
       setSelectedAccountId('');
       setInvoiceFilters({ type: '', contactId: '', periodStart: '', periodEnd: '' });
+      setArApFilters({ contactId: '', showOutstandingOnly: true });
     }
   }, [searchParams]);
 
@@ -279,6 +405,20 @@ export default function ReportsPage() {
           data = await api.get('/reports/invoices', params);
           break;
         }
+        case 'ar-report': {
+          const params: Record<string, string> = { asOfDate: dateRange.toDate };
+          if (arApFilters.contactId) params.contactId = arApFilters.contactId;
+          params.showOutstandingOnly = String(arApFilters.showOutstandingOnly);
+          data = await api.get('/reports/ar', params);
+          break;
+        }
+        case 'ap-report': {
+          const params: Record<string, string> = { asOfDate: dateRange.toDate };
+          if (arApFilters.contactId) params.contactId = arApFilters.contactId;
+          params.showOutstandingOnly = String(arApFilters.showOutstandingOnly);
+          data = await api.get('/reports/ap', params);
+          break;
+        }
       }
       setReportData(data);
     } catch (err) {
@@ -301,7 +441,7 @@ export default function ReportsPage() {
         {reports.map((r) => (
           <button
             key={r.id}
-            onClick={() => { setActiveReport(r.id); setReportData(null); setSelectedAccountId(''); setInvoiceFilters({ type: '', contactId: '', periodStart: '', periodEnd: '' }); }}
+            onClick={() => { setActiveReport(r.id); setReportData(null); setSelectedAccountId(''); setInvoiceFilters({ type: '', contactId: '', periodStart: '', periodEnd: '' }); setArApFilters({ contactId: '', showOutstandingOnly: true }); }}
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium',
               activeReport === r.id
@@ -376,7 +516,36 @@ export default function ReportsPage() {
             </div>
           </>
         )}
-        {activeReport !== 'trial-balance' && (
+        {(activeReport === 'ar-report' || activeReport === 'ap-report') && (
+          <>
+            <div className="w-52">
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                {activeReport === 'ar-report' ? 'Customer' : 'Vendor'}
+              </label>
+              <ContactCombobox
+                contacts={contacts.filter((c) =>
+                  activeReport === 'ar-report'
+                    ? c.contactType === 'CUSTOMER' || c.contactType === 'BOTH'
+                    : c.contactType === 'VENDOR' || c.contactType === 'BOTH',
+                )}
+                value={arApFilters.contactId}
+                onChange={(id) => setArApFilters((p) => ({ ...p, contactId: id }))}
+              />
+            </div>
+            <div className="flex items-end gap-2">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={arApFilters.showOutstandingOnly}
+                  onChange={(e) => setArApFilters((p) => ({ ...p, showOutstandingOnly: e.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600"
+                />
+                Outstanding only
+              </label>
+            </div>
+          </>
+        )}
+        {activeReport !== 'trial-balance' && activeReport !== 'ar-report' && activeReport !== 'ap-report' && (
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">From Date</label>
             <input
@@ -389,7 +558,9 @@ export default function ReportsPage() {
         )}
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">
-            {activeReport === 'trial-balance' ? 'As of Date' : 'To Date'}
+            {activeReport === 'trial-balance' || activeReport === 'ar-report' || activeReport === 'ap-report'
+              ? 'As of Date'
+              : 'To Date'}
           </label>
           <input
             type="date"
@@ -656,6 +827,10 @@ export default function ReportsPage() {
               </table>
               </div>
             </div>
+          )}
+
+          {(activeReport === 'ar-report' || activeReport === 'ap-report') && reportData && (
+            <ARAPReportView data={reportData} formatAmount={formatAmount} />
           )}
 
           {activeReport === 'invoice-report' && (

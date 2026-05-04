@@ -8,9 +8,12 @@ import { BalanceSheetService } from './balance-sheet.service';
 import { IncomeStatementService } from './income-statement.service';
 import { StatementOfAccountService } from './statement-of-account.service';
 import { InvoiceReportService } from './invoice-report.service';
+import { ARReportService } from './ar-report.service';
+import { APReportService } from './ap-report.service';
 import { TrialBalanceQueryDto } from './dto/trial-balance-query.dto';
 import { ReportDateRangeDto } from './dto/report-date-range.dto';
 import { InvoiceReportQueryDto } from './dto/invoice-report-query.dto';
+import { ARAPReportQueryDto } from './dto/ar-ap-report-query.dto';
 
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -23,6 +26,8 @@ export class ReportsController {
     private readonly incomeStatementService: IncomeStatementService,
     private readonly statementOfAccountService: StatementOfAccountService,
     private readonly invoiceReportService: InvoiceReportService,
+    private readonly arReportService: ARReportService,
+    private readonly apReportService: APReportService,
   ) {}
 
   @Get('trial-balance')
@@ -103,5 +108,25 @@ export class ReportsController {
     @Query() query: InvoiceReportQueryDto,
   ) {
     return this.invoiceReportService.generate(tenantId, query);
+  }
+
+  @Get('ar')
+  @ApiOperation({ summary: 'Generate Accounts Receivable (AR) aging report' })
+  @ApiResponse({ status: 200, description: 'AR report generated successfully' })
+  async getARReport(
+    @TenantId() tenantId: string,
+    @Query() query: ARAPReportQueryDto,
+  ) {
+    return this.arReportService.generate(tenantId, query);
+  }
+
+  @Get('ap')
+  @ApiOperation({ summary: 'Generate Accounts Payable (AP) aging report' })
+  @ApiResponse({ status: 200, description: 'AP report generated successfully' })
+  async getAPReport(
+    @TenantId() tenantId: string,
+    @Query() query: ARAPReportQueryDto,
+  ) {
+    return this.apReportService.generate(tenantId, query);
   }
 }
