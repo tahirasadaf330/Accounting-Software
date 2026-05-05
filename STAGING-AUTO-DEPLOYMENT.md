@@ -1,7 +1,19 @@
 # Staging Auto Deployment — Git Bare Repo + Work-Tree
 
 Zero-downtime push-to-deploy setup for the **staging instance**, running alongside the live deployment on the same server.
-Every `git push staging main` automatically checks out code, installs dependencies, builds, migrates, and restarts services.
+Every `git push staging staging` automatically checks out code, installs dependencies, builds, migrates, and restarts services.
+
+## Branching Workflow
+
+```
+feature-branch  →  merge into staging  →  git push staging staging  →  test on stagingaccount.voipsystem.org
+                                                                                    ↓
+                                                        merge staging into main  →  git push production main  →  live
+```
+
+- Developers work in feature branches and merge into `staging`
+- `git push staging staging` deploys the `staging` branch to the staging server
+- After testing is confirmed, merge `staging` into `main` and deploy to live
 
 ---
 
@@ -87,6 +99,12 @@ ls -la /home/deploy/repos/
 git init --bare /home/deploy/repos/accounting-staging.git
 ```
 
+Set the default branch to `staging` (the bare repo defaults to `master`):
+
+```bash
+git --git-dir=/home/deploy/repos/accounting-staging.git symbolic-ref HEAD refs/heads/staging
+```
+
 Confirm it was created correctly:
 
 ```bash
@@ -127,7 +145,7 @@ echo "========================================"
 # Step 1: Checkout latest code to work-tree
 echo ""
 echo "--- [1/8] Checking out latest code ---"
-git --git-dir="$GIT_DIR" --work-tree="$WORK_TREE" checkout -f main
+git --git-dir="$GIT_DIR" --work-tree="$WORK_TREE" checkout -f staging
 
 cd "$WORK_TREE"
 
@@ -185,11 +203,10 @@ chmod +x /home/deploy/repos/accounting-staging.git/hooks/post-receive
 
 ## 5. Set Up Environment File
 
-The `.env` file is not tracked in git. Set it up manually once on the server using staging values.
+The `.env` file is not tracked in git. Place it at the **root of the work-tree** (`/var/www/accounting-staging/.env`) — this is the single source of truth for all environment variables.
 
 ```bash
-cp /var/www/accounting-staging/.env.example /var/www/accounting-staging/apps/api/.env
-nano /var/www/accounting-staging/apps/api/.env
+nano /var/www/accounting-staging/.env
 ```
 
 Fill in staging values — note the different database, ports, Redis DB, and URLs from the live instance:
@@ -202,7 +219,7 @@ REDIS_URL="redis://localhost:6379/1"
 
 JWT_SECRET="generate-a-different-long-random-string-for-staging"
 JWT_REFRESH_SECRET="generate-another-different-long-random-string-for-staging"
-JWT_EXPIRATION="15m"
+JWT_EXPIRATION="1d"
 JWT_REFRESH_EXPIRATION="7d"
 
 API_PORT=3003
@@ -215,13 +232,22 @@ NEXT_PUBLIC_API_URL="https://stagingaccount.voipsystem.org/api/v1"
 WEB_URL="https://stagingaccount.voipsystem.org"
 APP_URL="https://stagingaccount.voipsystem.org"
 
-SMTP_HOST=smtp.example.com
+# Microsoft Graph API (for sending real emails)
+GRAPH_TENANT_ID="your-graph-tenant-id"
+GRAPH_CLIENT_ID="your-graph-client-id"
+GRAPH_CLIENT_SECRET="your-graph-client-secret"
+GRAPH_SENDER_EMAIL="noreply-internal@yourdomain.com"
+
+# SMTP fallback
+SMTP_HOST=smtp.outlook.com
 SMTP_PORT=587
-SMTP_USER=your_smtp_user
-SMTP_PASS=your_smtp_password
 SMTP_FROM="Accounting SaaS <noreply@voipsystem.org>"
 
-SUPER_ADMIN_EMAIL="admin@voipsystem.org"
+# CEO config
+CEO_NAME="Your CEO Name"
+CEO_EMAIL="ceo@yourdomain.com"
+
+SUPER_ADMIN_EMAIL="admin@yourdomain.com"
 SUPER_ADMIN_PASSWORD="StrongStagingPasswordHere!"
 ```
 
@@ -229,6 +255,14 @@ Generate secure secrets (use different values from the live instance):
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+```
+
+### Create symlink so Prisma can find DATABASE_URL
+
+Prisma runs from `apps/api` and looks for `.env` in that directory. Create a symlink pointing to the root `.env`:
+
+```bash
+ln -s /var/www/accounting-staging/.env /var/www/accounting-staging/apps/api/.env
 ```
 
 > **Important:** Staging must use Redis DB 1 (`redis://localhost:6379/1`) and live uses Redis DB 0 (`redis://localhost:6379`). This ensures sessions, caches, and queues never collide between the two instances.
@@ -387,10 +421,10 @@ Add SSL certificate for the staging domain:
 sudo certbot --nginx -d stagingaccount.voipsystem.org
 ```
 
-After SSL is issued, update `apps/api/.env` to use `https://` and restart the staging API:
+After SSL is issued, update the root `.env` to use `https://` and restart the staging API:
 
 ```bash
-sed -i 's|http://stagingaccount.voipsystem.org|https://stagingaccount.voipsystem.org|g' /var/www/accounting-staging/apps/api/.env
+sed -i 's|http://stagingaccount.voipsystem.org|https://stagingaccount.voipsystem.org|g' /var/www/accounting-staging/.env
 pm2 restart accounting-staging-api
 ```
 
@@ -425,15 +459,12 @@ git remote -v
 SSH into the server:
 
 ```bash
-# Checkout the code manually for the first time
+# Checkout the staging branch manually for the first time
 git --git-dir=/home/deploy/repos/accounting-staging.git \
     --work-tree=/var/www/accounting-staging \
-    checkout -f main
+    checkout -f staging
 
 cd /var/www/accounting-staging
-
-# Copy the .env file you created in Step 5
-cp /var/www/accounting-staging/apps/api/.env /var/www/accounting-staging/apps/api/.env
 
 # Install, build, and migrate
 pnpm install --frozen-lockfile
@@ -443,10 +474,7 @@ pnpm --filter @accounting-saas/shared build
 pnpm --filter api build
 
 # Build web with staging URL baked in
-cd apps/web
-rm -rf .next
-NEXT_PUBLIC_API_URL="https://stagingaccount.voipsystem.org/api/v1" npx next build
-cd /var/www/accounting-staging
+NEXT_PUBLIC_API_URL="https://stagingaccount.voipsystem.org/api/v1" pnpm --filter web build
 
 pnpm prisma:migrate:prod
 
@@ -457,10 +485,10 @@ pm2 save
 
 ### Trigger from local machine
 
-Push from your local `main` branch:
+Push from your local `staging` branch:
 
 ```bash
-git push staging main
+git push staging staging
 ```
 
 You will see the hook output in your terminal:
@@ -487,14 +515,11 @@ You will see the hook output in your terminal:
 ### All future deploys
 
 ```bash
-# Deploy to live only
+# Deploy to staging (from staging branch)
+git push staging staging
+
+# Deploy to live (from main branch)
 git push production main
-
-# Deploy to staging only
-git push staging main
-
-# Deploy to both simultaneously
-git push production main && git push staging main
 ```
 
 ---
@@ -685,11 +710,11 @@ grep -r "localhost:3001" /var/www/accounting-staging/apps/web/.next/ 2>/dev/null
 
 ```bash
 # Staging must use DB 1 — verify in the .env
-grep REDIS_URL /var/www/accounting-staging/apps/api/.env
+grep REDIS_URL /var/www/accounting-staging/.env
 # REDIS_URL="redis://localhost:6379/1"
 
 # Live must use DB 0 (default)
-grep REDIS_URL /var/www/accounting/apps/api/.env
+grep REDIS_URL /var/www/accounting/.env
 # REDIS_URL="redis://localhost:6379"
 ```
 
