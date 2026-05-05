@@ -8,7 +8,6 @@ const PRESETS = [
   { value: 'THIS_MONTH', label: 'This Month' },
   { value: 'LAST_MONTH', label: 'Last Month' },
   { value: 'THIS_YEAR', label: 'This Year' },
-  { value: 'CUSTOM', label: 'Custom' },
 ] as const;
 
 type PresetValue = (typeof PRESETS)[number]['value'];
@@ -57,7 +56,6 @@ function rangeFor(
       // Period in progress: start = Jan 1, end = today.
       return { start: `${t.getFullYear()}-01-01`, end: ymd(t) };
     }
-    case 'CUSTOM':
     default:
       return null;
   }
@@ -66,11 +64,10 @@ function rangeFor(
 function detectPreset(start: string, end: string): PresetValue | '' {
   if (!start || !end) return '';
   for (const p of PRESETS) {
-    if (p.value === 'CUSTOM') continue;
     const r = rangeFor(p.value);
     if (r && r.start === start && r.end === end) return p.value;
   }
-  return 'CUSTOM';
+  return '';
 }
 
 interface Props {
@@ -91,10 +88,7 @@ export function PeriodQuickPick({ start, end, onChange, className }: Props) {
         value={value}
         onChange={(e) => {
           const next = e.target.value as PresetValue | '';
-          if (next === '' || next === 'CUSTOM') {
-            onChange('', '');
-            return;
-          }
+          if (next === '') return;
           const r = rangeFor(next);
           if (r) onChange(r.start, r.end);
         }}
