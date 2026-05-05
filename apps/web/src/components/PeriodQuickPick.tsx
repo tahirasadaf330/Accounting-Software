@@ -3,12 +3,12 @@
 import { cn } from '@/lib/cn';
 
 const PRESETS = [
-  { value: 'CUSTOM', label: 'Custom' },
   { value: 'THIS_WEEK', label: 'This Week' },
   { value: 'LAST_WEEK', label: 'Last Week' },
   { value: 'THIS_MONTH', label: 'This Month' },
   { value: 'LAST_MONTH', label: 'Last Month' },
   { value: 'THIS_YEAR', label: 'This Year' },
+  { value: 'CUSTOM', label: 'Custom' },
 ] as const;
 
 type PresetValue = (typeof PRESETS)[number]['value'];
@@ -63,8 +63,8 @@ function rangeFor(
   }
 }
 
-function detectPreset(start: string, end: string): PresetValue {
-  if (!start || !end) return 'CUSTOM';
+function detectPreset(start: string, end: string): PresetValue | '' {
+  if (!start || !end) return '';
   for (const p of PRESETS) {
     if (p.value === 'CUSTOM') continue;
     const r = rangeFor(p.value);
@@ -85,13 +85,13 @@ export function PeriodQuickPick({ start, end, onChange, className }: Props) {
   return (
     <div className={className}>
       <label className="mb-1.5 block text-sm font-medium text-gray-700">
-        Quick Pick <span className="text-gray-400 font-normal">(optional)</span>
+        Invoice Period <span className="text-gray-400 font-normal">(optional)</span>
       </label>
       <select
         value={value}
         onChange={(e) => {
-          const next = e.target.value as PresetValue;
-          if (next === 'CUSTOM') {
+          const next = e.target.value as PresetValue | '';
+          if (next === '' || next === 'CUSTOM') {
             onChange('', '');
             return;
           }
@@ -100,10 +100,12 @@ export function PeriodQuickPick({ start, end, onChange, className }: Props) {
         }}
         className={cn(
           'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
+          value === '' && 'text-gray-400',
         )}
       >
+        <option value="" disabled hidden>Select</option>
         {PRESETS.map((p) => (
-          <option key={p.value} value={p.value}>
+          <option key={p.value} value={p.value} className="text-gray-900">
             {p.label}
           </option>
         ))}
