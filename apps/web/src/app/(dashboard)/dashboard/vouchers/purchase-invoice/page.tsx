@@ -10,6 +10,7 @@ import { api, ApiError } from '@/lib/api';
 import ContactSelector from '../invoice/ContactSelector';
 import InvoiceLineItems, { InvoiceLine } from '../invoice/InvoiceLineItems';
 import FileDropzone, { PendingFile } from '../invoice/FileDropzone';
+import { PeriodQuickPick } from '@/components/PeriodQuickPick';
 
 interface Account {
   id: string;
@@ -276,6 +277,13 @@ export default function PurchaseInvoicePage() {
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
               />
             </div>
+
+            <PeriodQuickPick
+              start={periodStart}
+              end={periodEnd}
+              onChange={(s, e) => { setPeriodStart(s); setPeriodEnd(e); }}
+              className="sm:col-span-2"
+            />
 
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700">
