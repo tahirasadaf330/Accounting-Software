@@ -121,6 +121,31 @@ export class VouchersService {
   }
 
   /**
+   * Block voucher creation when the transaction amount is below the contact's
+   * minimum threshold. No-op when contactId or threshold is unset.
+   */
+  private async validateMinThreshold(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    contactId: string | null | undefined,
+    totalAmount: Decimal,
+  ): Promise<void> {
+    if (!contactId) return;
+    const contact = await tx.contact.findFirst({
+      where: { id: contactId, tenantId },
+      select: { minThreshold: true },
+    });
+    if (!contact || contact.minThreshold == null) return;
+
+    const threshold = toDecimal(contact.minThreshold.toString());
+    if (totalAmount.lessThan(threshold)) {
+      throw new BadRequestException(
+        `Transaction amount ${totalAmount.toFixed(2)} is below the minimum threshold of ${threshold.toFixed(2)}. Please increase the amount or contact your account manager.`,
+      );
+    }
+  }
+
+  /**
    * Validate that total debits equal total credits (double-entry rule).
    */
   private validateDoubleEntry(
@@ -261,6 +286,8 @@ export class VouchersService {
     const voucherExchangeRate = dto.exchangeRate || '1';
 
     return this.prisma.$transaction(async (tx) => {
+      await this.validateMinThreshold(tx, tenantId, dto.contactId, totalDebits);
+
       const accountIds = dto.lineItems.map((li) => li.accountId);
       await this.validateAccounts(tenantId, accountIds, tx);
 
@@ -378,6 +405,8 @@ export class VouchersService {
     const voucherExchangeRate = voucherDto.exchangeRate || '1';
 
     return this.prisma.$transaction(async (tx) => {
+      await this.validateMinThreshold(tx, tenantId, voucherDto.contactId, totalDebits);
+
       const accountIds = voucherDto.lineItems.map((li) => li.accountId);
       await this.validateAccounts(tenantId, accountIds, tx);
 
@@ -503,6 +532,8 @@ export class VouchersService {
     const voucherExchangeRate = voucherDto.exchangeRate || '1';
 
     return this.prisma.$transaction(async (tx) => {
+      await this.validateMinThreshold(tx, tenantId, voucherDto.contactId, totalDebits);
+
       const accountIds = voucherDto.lineItems.map((li) => li.accountId);
       await this.validateAccounts(tenantId, accountIds, tx);
 

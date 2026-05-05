@@ -146,6 +146,7 @@ model Tenant {
   reconciliationMatches ReconciliationMatch[]
   contacts            Contact[]
   accountManagers     AccountManager[]
+  businessUnits       BusinessUnit[]
   accountBalances      AccountBalance[]
   paymentAllocations   PaymentAllocation[]
   nettingCycles        NettingCycle[]
@@ -651,18 +652,22 @@ model Contact {
   country         String?     @db.VarChar(100)
   postalCode      String?     @db.VarChar(20)
   taxId           String?     @db.VarChar(50)
-  creditLimit       Decimal?    @db.Decimal(20, 4)
-  paymentTermDays   Int?        @db.SmallInt
-  billingStartDate  DateTime?   @db.Date
-  currencyCode      String      @default("USD") @db.VarChar(3)
-  isActive          Boolean     @default(true)
-  accountId         String?
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  creditLimit             Decimal?    @db.Decimal(20, 4)
+  minThreshold            Decimal?    @db.Decimal(20, 4)
+  paymentTermDays         Int?        @db.SmallInt
+  billingStartDate        DateTime?   @db.Date
+  currencyCode            String      @default("USD") @db.VarChar(3)
+  isActive                Boolean     @default(true)
+  accountId               String?
+  businessUnitId          String?
+  amApprovalRequired      Boolean     @default(false)
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
 
   // Relations
   tenant          Tenant                 @relation(fields: [tenantId], references: [id])
   account         Account?               @relation(fields: [accountId], references: [id])
+  businessUnit    BusinessUnit?          @relation(fields: [businessUnitId], references: [id])
   accountManagers ContactAccountManager[]
   vouchers        Voucher[]
   nettingCycles   NettingCycle[]
@@ -671,7 +676,29 @@ model Contact {
   @@index([tenantId, type])
   @@index([tenantId, name])
   @@index([tenantId, accountId])
+  @@index([tenantId, businessUnitId])
   @@map("contacts")
+}
+
+// ============================================================
+// Business Unit (lookup table — categorizes contacts: Voice, SMS, ...)
+// ============================================================
+
+model BusinessUnit {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String   @db.VarChar(100)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  contacts Contact[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("business_units")
 }
 
 // ============================================================
