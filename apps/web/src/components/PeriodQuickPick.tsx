@@ -31,11 +31,10 @@ function rangeFor(
 
   switch (preset) {
     case 'THIS_WEEK': {
+      // Period in progress: start = Monday of this week, end = today.
       const mon = new Date(t);
       mon.setDate(t.getDate() - daysSinceMonday);
-      const sun = new Date(mon);
-      sun.setDate(mon.getDate() + 6);
-      return { start: ymd(mon), end: ymd(sun) };
+      return { start: ymd(mon), end: ymd(t) };
     }
     case 'LAST_WEEK': {
       const mon = new Date(t);
@@ -45,9 +44,9 @@ function rangeFor(
       return { start: ymd(mon), end: ymd(sun) };
     }
     case 'THIS_MONTH': {
+      // Period in progress: start = 1st of this month, end = today.
       const first = new Date(t.getFullYear(), t.getMonth(), 1);
-      const last = new Date(t.getFullYear(), t.getMonth() + 1, 0);
-      return { start: ymd(first), end: ymd(last) };
+      return { start: ymd(first), end: ymd(t) };
     }
     case 'LAST_MONTH': {
       const first = new Date(t.getFullYear(), t.getMonth() - 1, 1);
@@ -55,7 +54,8 @@ function rangeFor(
       return { start: ymd(first), end: ymd(last) };
     }
     case 'THIS_YEAR': {
-      return { start: `${t.getFullYear()}-01-01`, end: `${t.getFullYear()}-12-31` };
+      // Period in progress: start = Jan 1, end = today.
+      return { start: `${t.getFullYear()}-01-01`, end: ymd(t) };
     }
     case 'CUSTOM':
     default:
