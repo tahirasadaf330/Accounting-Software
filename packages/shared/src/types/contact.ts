@@ -10,10 +10,13 @@ export interface CreateContactDto {
   postalCode?: string;
   taxId?: string;
   creditLimit?: number;
+  minThreshold?: number;
   paymentTermDays?: number;
   currencyCode?: string;
   accountId?: string;
   autoCreateAccount?: boolean;
+  businessUnitId: string;
+  amApprovalRequired?: boolean;
 }
 
 export interface UpdateContactDto {
@@ -27,9 +30,12 @@ export interface UpdateContactDto {
   postalCode?: string;
   taxId?: string;
   creditLimit?: number;
+  minThreshold?: number;
   paymentTermDays?: number;
   currencyCode?: string;
   isActive?: boolean;
+  businessUnitId?: string;
+  amApprovalRequired?: boolean;
 }
 
 export interface ContactResponse {
@@ -45,11 +51,15 @@ export interface ContactResponse {
   postalCode: string | null;
   taxId: string | null;
   creditLimit: string | null;
+  minThreshold: string | null;
   paymentTermDays: number | null;
   currencyCode: string;
   isActive: boolean;
+  amApprovalRequired: boolean;
   accountId: string | null;
   accountCode: string | null;
   accountName: string | null;
+  businessUnitId: string | null;
+  businessUnitName: string | null;
   createdAt: string;
 }

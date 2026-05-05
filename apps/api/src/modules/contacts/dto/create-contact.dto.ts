@@ -81,6 +81,16 @@ export class CreateContactDto {
   @Min(0)
   creditLimit?: number;
 
+  @ApiPropertyOptional({
+    example: 1000,
+    description:
+      'Minimum transaction amount. Transactions below this amount will be blocked.',
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  minThreshold?: number;
+
   @ApiPropertyOptional({ example: 30, description: 'Payment term in days' })
   @IsOptional()
   @IsInt()
@@ -93,6 +103,18 @@ export class CreateContactDto {
   @IsString()
   @MaxLength(3)
   currencyCode?: string;
+
+  @ApiProperty({ description: 'Business unit ID (e.g. Voice, SMS)' })
+  @IsUUID()
+  businessUnitId: string;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Require Account Manager approval for this contact’s transactions',
+  })
+  @IsOptional()
+  @IsBoolean()
+  amApprovalRequired?: boolean;
 
   @ApiPropertyOptional({ description: 'Existing GL account ID to link' })
   @IsOptional()
