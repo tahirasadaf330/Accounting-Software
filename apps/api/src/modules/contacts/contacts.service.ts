@@ -21,6 +21,16 @@ export class ContactsService {
     let accountId = dto.accountId;
     const contactType = dto.type || ContactType.CUSTOMER;
 
+    const businessUnit = await this.prisma.businessUnit.findFirst({
+      where: { id: dto.businessUnitId, tenantId },
+    });
+    if (!businessUnit) {
+      throw new NotFoundException('Selected business unit not found');
+    }
+    if (!businessUnit.isActive) {
+      throw new BadRequestException('Selected business unit is inactive');
+    }
+
     // If accountId is provided, validate it
     if (accountId) {
       const account = await this.prisma.account.findFirst({
@@ -59,14 +69,20 @@ export class ContactsService {
         postalCode: dto.postalCode || null,
         taxId: dto.taxId || null,
         creditLimit: dto.creditLimit ?? null,
+        minThreshold: dto.minThreshold ?? null,
         paymentTermDays: dto.paymentTermDays ?? null,
         currencyCode: dto.currencyCode || 'USD',
         billingStartDate: dto.billingStartDate ? new Date(dto.billingStartDate) : null,
         accountId: accountId || null,
+        businessUnitId: dto.businessUnitId,
+        amApprovalRequired: dto.amApprovalRequired ?? false,
       },
       include: {
         account: {
           select: { id: true, code: true, name: true },
+        },
+        businessUnit: {
+          select: { id: true, name: true },
         },
         accountManagers: {
           include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
@@ -92,6 +108,7 @@ export class ContactsService {
         where: { id: contact.id },
         include: {
           account: { select: { id: true, code: true, name: true } },
+          businessUnit: { select: { id: true, name: true } },
           accountManagers: {
             include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
           },
@@ -137,6 +154,9 @@ export class ContactsService {
     const include = {
       account: {
         select: { id: true, code: true, name: true },
+      },
+      businessUnit: {
+        select: { id: true, name: true },
       },
       accountManagers: {
         include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
@@ -192,6 +212,9 @@ export class ContactsService {
         account: {
           select: { id: true, code: true, name: true },
         },
+        businessUnit: {
+          select: { id: true, name: true },
+        },
         accountManagers: {
           include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
         },
@@ -214,6 +237,18 @@ export class ContactsService {
       throw new NotFoundException('Contact not found');
     }
 
+    if (dto.businessUnitId !== undefined) {
+      const businessUnit = await this.prisma.businessUnit.findFirst({
+        where: { id: dto.businessUnitId, tenantId },
+      });
+      if (!businessUnit) {
+        throw new NotFoundException('Selected business unit not found');
+      }
+      if (!businessUnit.isActive) {
+        throw new BadRequestException('Selected business unit is inactive');
+      }
+    }
+
     const updated = await this.prisma.contact.update({
       where: { id },
       data: {
@@ -227,14 +262,20 @@ export class ContactsService {
         postalCode: dto.postalCode,
         taxId: dto.taxId,
         creditLimit: dto.creditLimit,
+        minThreshold: dto.minThreshold,
         paymentTermDays: dto.paymentTermDays,
         currencyCode: dto.currencyCode,
         isActive: dto.isActive,
+        businessUnitId: dto.businessUnitId,
+        amApprovalRequired: dto.amApprovalRequired,
         billingStartDate: dto.billingStartDate !== undefined ? (dto.billingStartDate ? new Date(dto.billingStartDate) : null) : undefined,
       },
       include: {
         account: {
           select: { id: true, code: true, name: true },
+        },
+        businessUnit: {
+          select: { id: true, name: true },
         },
         accountManagers: {
           include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
@@ -267,6 +308,7 @@ export class ContactsService {
         where: { id },
         include: {
           account: { select: { id: true, code: true, name: true } },
+          businessUnit: { select: { id: true, name: true } },
           accountManagers: {
             include: { accountManager: { select: { id: true, name: true, email: true, managerType: true } } },
           },
@@ -425,13 +467,17 @@ export class ContactsService {
       postalCode: contact.postalCode,
       taxId: contact.taxId,
       creditLimit: contact.creditLimit?.toString() || null,
+      minThreshold: contact.minThreshold?.toString() || null,
       paymentTermDays: contact.paymentTermDays,
       currencyCode: contact.currencyCode,
       isActive: contact.isActive,
+      amApprovalRequired: contact.amApprovalRequired ?? false,
       billingStartDate: contact.billingStartDate ? (contact.billingStartDate as Date).toISOString().split('T')[0] : null,
       accountId: contact.account?.id || contact.accountId || null,
       accountCode: contact.account?.code || null,
       accountName: contact.account?.name || null,
+      businessUnitId: contact.businessUnit?.id || contact.businessUnitId || null,
+      businessUnitName: contact.businessUnit?.name || null,
       inHouseManagers: (contact.accountManagers || [])
         .filter((cam: any) => cam.accountManager.managerType === 'IN_HOUSE')
         .map((cam: any) => ({ id: cam.accountManager.id, name: cam.accountManager.name, email: cam.accountManager.email })),

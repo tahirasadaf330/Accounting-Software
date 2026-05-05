@@ -24,12 +24,16 @@ interface Contact {
   postalCode: string | null;
   taxId: string | null;
   creditLimit: string | null;
+  minThreshold: string | null;
   paymentTermDays: number | null;
   currencyCode: string;
   isActive: boolean;
+  amApprovalRequired: boolean;
   accountId: string | null;
   accountCode: string | null;
   accountName: string | null;
+  businessUnitId: string | null;
+  businessUnitName: string | null;
   inHouseManagers: { id: string; name: string; email: string }[];
   partnerManagers: { id: string; name: string; email: string }[];
   createdAt: string;
@@ -285,6 +289,7 @@ export default function ContactsPage() {
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Name</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Type</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Business Unit</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Email</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Phone</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Account</th>
@@ -301,6 +306,9 @@ export default function ContactsPage() {
                     <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', typeBadgeColors[contact.type] || 'bg-gray-100 text-gray-600')}>
                       {contact.type === 'BOTH' ? 'Customer & Vendor' : contact.type.charAt(0) + contact.type.slice(1).toLowerCase()}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    {contact.businessUnitName || <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500">{contact.email || '—'}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">{contact.phone || '—'}</td>

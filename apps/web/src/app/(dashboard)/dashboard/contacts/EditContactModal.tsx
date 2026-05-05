@@ -90,12 +90,16 @@ interface Contact {
   postalCode: string | null;
   taxId: string | null;
   creditLimit: string | null;
+  minThreshold: string | null;
   paymentTermDays: number | null;
   currencyCode: string;
   isActive: boolean;
+  amApprovalRequired: boolean;
   accountId: string | null;
   accountCode: string | null;
   accountName: string | null;
+  businessUnitId: string | null;
+  businessUnitName: string | null;
   inHouseManagers: { id: string; name: string; email: string }[];
   partnerManagers: { id: string; name: string; email: string }[];
 }
@@ -117,6 +121,8 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
   const panelRef = useRef<HTMLDivElement>(null);
 
   const [name, setName] = useState('');
+  const [businessUnitId, setBusinessUnitId] = useState('');
+  const [businessUnits, setBusinessUnits] = useState<{ id: string; name: string }[]>([]);
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
@@ -126,8 +132,10 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
   const [postalCode, setPostalCode] = useState('');
   const [taxId, setTaxId] = useState('');
   const [creditLimit, setCreditLimit] = useState('');
+  const [minThreshold, setMinThreshold] = useState('');
   const [paymentTermDays, setPaymentTermDays] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [amApprovalRequired, setAmApprovalRequired] = useState(false);
   const [billingStartDate, setBillingStartDate] = useState('');
   const [inHouseManagerIds, setInHouseManagerIds] = useState<string[]>([]);
   const [partnerManagerIds, setPartnerManagerIds] = useState<string[]>([]);
@@ -145,9 +153,19 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
     }
   };
 
+  const loadBusinessUnits = async () => {
+    try {
+      const data = await api.get<any[]>('/business-units', { isActive: true });
+      setBusinessUnits(data);
+    } catch {
+      setBusinessUnits([]);
+    }
+  };
+
   useEffect(() => {
     if (open && contact) {
       setName(contact.name);
+      setBusinessUnitId(contact.businessUnitId || '');
       setEmail(contact.email || '');
       setPhone(contact.phone || '');
       setAddress(contact.address || '');
@@ -157,8 +175,10 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
       setPostalCode(contact.postalCode || '');
       setTaxId(contact.taxId || '');
       setCreditLimit(contact.creditLimit || '');
+      setMinThreshold(contact.minThreshold || '');
       setPaymentTermDays(contact.paymentTermDays?.toString() || '');
       setIsActive(contact.isActive);
+      setAmApprovalRequired(contact.amApprovalRequired ?? false);
       setBillingStartDate((contact as any).billingStartDate || '');
       setInHouseManagerIds((contact.inHouseManagers || []).map((am: any) => am.id));
       setPartnerManagerIds((contact.partnerManagers || []).map((am: any) => am.id));
@@ -166,6 +186,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
       setFieldErrors({});
       setSubmitting(false);
       loadAccountManagers();
+      loadBusinessUnits();
     }
   }, [open, contact]);
 
@@ -181,11 +202,18 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
     if (!name.trim()) errors.name = 'Contact name is required';
+    if (!businessUnitId) errors.businessUnitId = 'Business unit is required';
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       errors.email = 'Invalid email format';
     }
     if (creditLimit.trim() && (isNaN(Number(creditLimit)) || Number(creditLimit) < 0)) {
       errors.creditLimit = 'Credit limit must be a non-negative number';
+    }
+    if (minThreshold.trim()) {
+      const t = Number(minThreshold);
+      if (isNaN(t) || t < 0) {
+        errors.minThreshold = 'Threshold must be a non-negative number';
+      }
     }
     if (paymentTermDays.trim()) {
       const days = parseInt(paymentTermDays, 10);
@@ -207,6 +235,8 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
     try {
       const body: any = {
         name: name.trim(),
+        businessUnitId,
+        amApprovalRequired,
         email: email.trim() || null,
         phone: phone.trim() || null,
         address: address.trim() || null,
@@ -221,6 +251,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
         partnerManagerIds,
       };
       if (creditLimit.trim()) body.creditLimit = Number(creditLimit);
+      if (minThreshold.trim()) body.minThreshold = Number(minThreshold);
       if (paymentTermDays.trim()) body.paymentTermDays = parseInt(paymentTermDays, 10);
 
       await api.patch(`/contacts/${contact.id}`, body);
@@ -300,6 +331,28 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
                   )}
                 />
                 {fieldErrors.name && <p className="mt-1 text-xs text-red-600">{fieldErrors.name}</p>}
+              </div>
+
+              {/* Business Unit */}
+              <div>
+                <label htmlFor="edit-businessUnitId" className="mb-1 block text-sm font-medium text-gray-700">
+                  Business Unit <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="edit-businessUnitId"
+                  value={businessUnitId}
+                  onChange={(e) => { setBusinessUnitId(e.target.value); setFieldErrors((p) => ({ ...p, businessUnitId: '' })); }}
+                  className={cn(
+                    'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
+                    fieldErrors.businessUnitId ? 'border-red-300' : 'border-gray-300',
+                  )}
+                >
+                  <option value="">Select a business unit</option>
+                  {businessUnits.map((bu) => (
+                    <option key={bu.id} value={bu.id}>{bu.name}</option>
+                  ))}
+                </select>
+                {fieldErrors.businessUnitId && <p className="mt-1 text-xs text-red-600">{fieldErrors.businessUnitId}</p>}
               </div>
 
               {/* Email */}
@@ -401,6 +454,33 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
                 </div>
               </div>
 
+              {/* Min Threshold */}
+              <div>
+                <label htmlFor="edit-minThreshold" className="mb-1 block text-sm font-medium text-gray-700">
+                  Min Threshold
+                </label>
+                <input
+                  id="edit-minThreshold"
+                  type="number"
+                  inputMode="decimal"
+                  value={minThreshold}
+                  onChange={(e) => { setMinThreshold(e.target.value); setFieldErrors((p) => ({ ...p, minThreshold: '' })); }}
+                  placeholder="e.g. 1000"
+                  min="0"
+                  className={cn(
+                    'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
+                    fieldErrors.minThreshold ? 'border-red-300' : 'border-gray-300',
+                  )}
+                />
+                {fieldErrors.minThreshold ? (
+                  <p className="mt-1 text-xs text-red-600">{fieldErrors.minThreshold}</p>
+                ) : (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Vouchers, receipts, and payments below this amount will be blocked.
+                  </p>
+                )}
+              </div>
+
               {/* Billing Start Date */}
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Billing Start Date</label>
@@ -418,6 +498,24 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
                 selectedIds={inHouseManagerIds}
                 onChange={setInHouseManagerIds}
               />
+
+              {/* AM Approval Required */}
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={amApprovalRequired}
+                    onChange={(e) => setAmApprovalRequired(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600"
+                  />
+                  <span>
+                    <span className="block font-medium text-gray-700">AM Approval Required</span>
+                    <span className="block text-xs text-gray-500">
+                      When enabled, transactions for this contact will require Account Manager approval.
+                    </span>
+                  </span>
+                </label>
+              </div>
 
               <MultiSelectDropdown
                 label="Partner Manager(s)"

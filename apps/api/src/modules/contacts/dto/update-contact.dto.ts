@@ -73,6 +73,16 @@ export class UpdateContactDto {
   @Min(0)
   creditLimit?: number;
 
+  @ApiPropertyOptional({
+    example: 1000,
+    description:
+      'Minimum transaction amount. Transactions below this amount will be blocked.',
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  minThreshold?: number;
+
   @ApiPropertyOptional({ example: 30, description: 'Payment term in days' })
   @IsOptional()
   @IsInt()
@@ -85,6 +95,19 @@ export class UpdateContactDto {
   @IsString()
   @MaxLength(3)
   currencyCode?: string;
+
+  @ApiPropertyOptional({ description: 'Business unit ID' })
+  @IsOptional()
+  @IsUUID()
+  businessUnitId?: string;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Require Account Manager approval for this contact’s transactions',
+  })
+  @IsOptional()
+  @IsBoolean()
+  amApprovalRequired?: boolean;
 
   @ApiPropertyOptional({ example: true, description: 'Active status' })
   @IsOptional()

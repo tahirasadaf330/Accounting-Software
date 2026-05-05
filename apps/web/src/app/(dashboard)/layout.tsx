@@ -50,6 +50,7 @@ import {
   Users,
   UserCircle,
   UserCog,
+  Layers,
   Settings,
   LogOut,
   Menu,
@@ -114,6 +115,7 @@ const navigation: NavItem[] = [
   { name: 'Fiscal Years', href: '/dashboard/fiscal-years', icon: Calendar },
   { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
   { name: 'Users', href: '/dashboard/users', icon: Users },
+  { name: 'Business Units', href: '/dashboard/business-units', icon: Layers },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
