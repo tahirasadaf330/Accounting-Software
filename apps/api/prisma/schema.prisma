@@ -639,6 +639,16 @@ model ReconciliationMatch {
 // CONTACTS (Customers & Vendors)
 // ============================================================
 
+enum PaymentMethod {
+  WIRE
+  ACH
+}
+
+enum AccountClassification {
+  PREPAYMENT
+  POSTPAYMENT
+}
+
 model Contact {
   id              String      @id @default(uuid())
   tenantId        String
@@ -657,6 +667,14 @@ model Contact {
   paymentTermDays         Int?        @db.SmallInt
   billingStartDate        DateTime?   @db.Date
   currencyCode            String      @default("USD") @db.VarChar(3)
+  bankName                String?     @db.VarChar(255)
+  bankAccountNumber       String?     @db.VarChar(100)
+  bankIban                String?     @db.VarChar(50)
+  bankSwiftCode           String?     @db.VarChar(50)
+  bankRoutingNumber       String?     @db.VarChar(50)
+  bankAddress             String?
+  paymentMethod           PaymentMethod?
+  accountClassification   AccountClassification?
   isActive                Boolean     @default(true)
   accountId               String?
   businessUnitId          String?

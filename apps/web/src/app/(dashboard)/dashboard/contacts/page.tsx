@@ -27,6 +27,14 @@ interface Contact {
   minThreshold: string | null;
   paymentTermDays: number | null;
   currencyCode: string;
+  bankName: string | null;
+  bankAccountNumber: string | null;
+  bankIban: string | null;
+  bankSwiftCode: string | null;
+  bankRoutingNumber: string | null;
+  bankAddress: string | null;
+  paymentMethod: 'WIRE' | 'ACH' | null;
+  accountClassification: 'PREPAYMENT' | 'POSTPAYMENT' | null;
   isActive: boolean;
   amApprovalRequired: boolean;
   accountId: string | null;

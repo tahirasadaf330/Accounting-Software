@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { X, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import CurrencySelect from '@/components/CurrencySelect';
+
+type PaymentMethod = 'WIRE' | 'ACH';
+type AccountClassification = 'PREPAYMENT' | 'POSTPAYMENT';
 
 function MultiSelectDropdown({
   label,
@@ -93,6 +97,14 @@ interface Contact {
   minThreshold: string | null;
   paymentTermDays: number | null;
   currencyCode: string;
+  bankName: string | null;
+  bankAccountNumber: string | null;
+  bankIban: string | null;
+  bankSwiftCode: string | null;
+  bankRoutingNumber: string | null;
+  bankAddress: string | null;
+  paymentMethod: PaymentMethod | null;
+  accountClassification: AccountClassification | null;
   isActive: boolean;
   amApprovalRequired: boolean;
   accountId: string | null;
@@ -137,6 +149,15 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
   const [isActive, setIsActive] = useState(true);
   const [amApprovalRequired, setAmApprovalRequired] = useState(false);
   const [billingStartDate, setBillingStartDate] = useState('');
+  const [currencyCode, setCurrencyCode] = useState('USD');
+  const [bankName, setBankName] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankIban, setBankIban] = useState('');
+  const [bankSwiftCode, setBankSwiftCode] = useState('');
+  const [bankRoutingNumber, setBankRoutingNumber] = useState('');
+  const [bankAddress, setBankAddress] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
+  const [accountClassification, setAccountClassification] = useState<AccountClassification | ''>('');
   const [inHouseManagerIds, setInHouseManagerIds] = useState<string[]>([]);
   const [partnerManagerIds, setPartnerManagerIds] = useState<string[]>([]);
   const [accountManagers, setAccountManagers] = useState<{ id: string; name: string; email: string; managerType: string }[]>([]);
@@ -180,6 +201,15 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
       setIsActive(contact.isActive);
       setAmApprovalRequired(contact.amApprovalRequired ?? false);
       setBillingStartDate((contact as any).billingStartDate || '');
+      setCurrencyCode(contact.currencyCode || 'USD');
+      setBankName(contact.bankName || '');
+      setBankAccountNumber(contact.bankAccountNumber || '');
+      setBankIban(contact.bankIban || '');
+      setBankSwiftCode(contact.bankSwiftCode || '');
+      setBankRoutingNumber(contact.bankRoutingNumber || '');
+      setBankAddress(contact.bankAddress || '');
+      setPaymentMethod((contact.paymentMethod as PaymentMethod | null) || '');
+      setAccountClassification((contact.accountClassification as AccountClassification | null) || '');
       setInHouseManagerIds((contact.inHouseManagers || []).map((am: any) => am.id));
       setPartnerManagerIds((contact.partnerManagers || []).map((am: any) => am.id));
       setError('');
@@ -247,6 +277,15 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
         taxId: taxId.trim() || null,
         isActive,
         billingStartDate: billingStartDate || null,
+        currencyCode: currencyCode || 'USD',
+        bankName: bankName.trim() || null,
+        bankAccountNumber: bankAccountNumber.trim() || null,
+        bankIban: bankIban.trim() || null,
+        bankSwiftCode: bankSwiftCode.trim() || null,
+        bankRoutingNumber: bankRoutingNumber.trim() || null,
+        bankAddress: bankAddress.trim() || null,
+        paymentMethod: paymentMethod || null,
+        accountClassification: accountClassification || null,
         inHouseManagerIds,
         partnerManagerIds,
       };
@@ -490,6 +529,144 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
                   onChange={(e) => setBillingStartDate(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
                 />
+              </div>
+
+              {/* Currency */}
+              <div>
+                <label htmlFor="edit-currencyCode" className="mb-1 block text-sm font-medium text-gray-700">Currency</label>
+                <CurrencySelect id="edit-currencyCode" value={currencyCode} onChange={setCurrencyCode} />
+              </div>
+
+              {/* Account Type (prepayment / post payment) */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Account Type</label>
+                <div className="flex items-center gap-4">
+                  {([
+                    { value: 'PREPAYMENT', label: 'Prepayment' },
+                    { value: 'POSTPAYMENT', label: 'Post Payment' },
+                  ] as const).map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="edit-accountClassification"
+                        checked={accountClassification === opt.value}
+                        onChange={() => setAccountClassification(opt.value)}
+                        className="text-primary-600"
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                  {accountClassification && (
+                    <button
+                      type="button"
+                      onClick={() => setAccountClassification('')}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Method of Payment */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Method of Payment</label>
+                <div className="flex items-center gap-4">
+                  {(['WIRE', 'ACH'] as const).map((m) => (
+                    <label key={m} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="edit-paymentMethod"
+                        checked={paymentMethod === m}
+                        onChange={() => setPaymentMethod(m)}
+                        className="text-primary-600"
+                      />
+                      {m}
+                    </label>
+                  ))}
+                  {paymentMethod && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('')}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Bank Details */}
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                <p className="text-sm font-medium text-gray-700">Bank Details</p>
+
+                <div>
+                  <label htmlFor="edit-bankName" className="mb-1 block text-xs font-medium text-gray-600">Bank Name</label>
+                  <input
+                    id="edit-bankName"
+                    type="text"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="edit-bankAccountNumber" className="mb-1 block text-xs font-medium text-gray-600">Account Number</label>
+                    <input
+                      id="edit-bankAccountNumber"
+                      type="text"
+                      value={bankAccountNumber}
+                      onChange={(e) => setBankAccountNumber(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="edit-bankIban" className="mb-1 block text-xs font-medium text-gray-600">IBAN</label>
+                    <input
+                      id="edit-bankIban"
+                      type="text"
+                      value={bankIban}
+                      onChange={(e) => setBankIban(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="edit-bankSwiftCode" className="mb-1 block text-xs font-medium text-gray-600">Swift / Sort Code</label>
+                    <input
+                      id="edit-bankSwiftCode"
+                      type="text"
+                      value={bankSwiftCode}
+                      onChange={(e) => setBankSwiftCode(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="edit-bankRoutingNumber" className="mb-1 block text-xs font-medium text-gray-600">Routing Number</label>
+                    <input
+                      id="edit-bankRoutingNumber"
+                      type="text"
+                      value={bankRoutingNumber}
+                      onChange={(e) => setBankRoutingNumber(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="edit-bankAddress" className="mb-1 block text-xs font-medium text-gray-600">Bank Address</label>
+                  <input
+                    id="edit-bankAddress"
+                    type="text"
+                    value={bankAddress}
+                    onChange={(e) => setBankAddress(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  />
+                </div>
               </div>
 
               <MultiSelectDropdown

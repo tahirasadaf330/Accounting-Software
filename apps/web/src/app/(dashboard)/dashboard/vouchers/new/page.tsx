@@ -11,6 +11,7 @@ import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
 import { ArrowLeft, ChevronDown, Plus, Trash2 } from 'lucide-react';
 import ContactSelector from '../invoice/ContactSelector';
+import FileDropzone, { PendingFile } from '../invoice/FileDropzone';
 import InvoiceAllocationPanel, {
   AllocationSelection,
 } from './InvoiceAllocationPanel';
@@ -234,6 +235,7 @@ export default function NewVoucherPage() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [allocations, setAllocations] = useState<AllocationSelection[]>([]);
   const [nettingAllocations, setNettingAllocations] = useState<NettingAllocationSelection[]>([]);
+  const [files, setFiles] = useState<PendingFile[]>([]);
   const lastAutoReferenceRef = useRef('');
 
   const {
@@ -512,6 +514,22 @@ export default function NewVoucherPage() {
       } else {
         result = await api.post<{ id: string }>('/vouchers', voucherPayload);
       }
+
+      if (files.length > 0) {
+        try {
+          await api.uploadFiles(
+            `/vouchers/${result.id}/attachments`,
+            files.map((f) => f.file),
+          );
+        } catch (uploadErr) {
+          console.error('Failed to upload attachments:', uploadErr);
+        }
+      }
+
+      files.forEach((f) => {
+        if (f.preview) URL.revokeObjectURL(f.preview);
+      });
+
       router.push(`/dashboard/vouchers/${result.id}`);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -829,6 +847,12 @@ export default function NewVoucherPage() {
               </tfoot>
             </table>
           </div>
+        </div>
+
+        {/* Attachments Card */}
+        <div className="mb-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
+          <h2 className="mb-4 text-lg font-semibold text-gray-900">Attachments</h2>
+          <FileDropzone files={files} onChange={setFiles} />
         </div>
 
         {/* Footer */}
