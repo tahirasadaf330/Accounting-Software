@@ -7,11 +7,13 @@ import {
   IsInt,
   IsUUID,
   IsDateString,
+  IsEnum,
   MaxLength,
   Min,
   Max,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { PaymentMethod, AccountClassification } from '@prisma/client';
 
 export class UpdateContactDto {
   @ApiPropertyOptional({ example: 'Acme Corp', description: 'Contact name' })
@@ -95,6 +97,51 @@ export class UpdateContactDto {
   @IsString()
   @MaxLength(3)
   currencyCode?: string;
+
+  @ApiPropertyOptional({ example: 'Chase Bank', description: 'Bank name' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  bankName?: string;
+
+  @ApiPropertyOptional({ example: '1234567890', description: 'Bank account number' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  bankAccountNumber?: string;
+
+  @ApiPropertyOptional({ example: 'GB29NWBK60161331926819', description: 'IBAN' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  bankIban?: string;
+
+  @ApiPropertyOptional({ example: 'CHASUS33', description: 'Swift / Sort code' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  bankSwiftCode?: string;
+
+  @ApiPropertyOptional({ example: '021000021', description: 'Routing number' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  bankRoutingNumber?: string;
+
+  @ApiPropertyOptional({ example: '270 Park Ave, New York', description: 'Bank address' })
+  @IsOptional()
+  @IsString()
+  bankAddress?: string;
+
+  @ApiPropertyOptional({ enum: PaymentMethod, example: 'WIRE', description: 'Method of payment' })
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
+
+  @ApiPropertyOptional({ enum: AccountClassification, example: 'PREPAYMENT', description: 'Account type: prepayment or post payment' })
+  @IsOptional()
+  @IsEnum(AccountClassification)
+  accountClassification?: AccountClassification;
 
   @ApiPropertyOptional({ description: 'Business unit ID' })
   @IsOptional()

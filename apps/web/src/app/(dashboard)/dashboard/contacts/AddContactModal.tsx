@@ -4,6 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { X, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import CurrencySelect from '@/components/CurrencySelect';
+
+type PaymentMethod = 'WIRE' | 'ACH';
+type AccountClassification = 'PREPAYMENT' | 'POSTPAYMENT';
 
 function MultiSelectDropdown({
   label,
@@ -109,6 +113,15 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
   const [minThreshold, setMinThreshold] = useState('');
   const [paymentTermDays, setPaymentTermDays] = useState('');
   const [billingStartDate, setBillingStartDate] = useState('');
+  const [currencyCode, setCurrencyCode] = useState('USD');
+  const [bankName, setBankName] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankIban, setBankIban] = useState('');
+  const [bankSwiftCode, setBankSwiftCode] = useState('');
+  const [bankRoutingNumber, setBankRoutingNumber] = useState('');
+  const [bankAddress, setBankAddress] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
+  const [accountClassification, setAccountClassification] = useState<AccountClassification | ''>('');
   const [inHouseManagerIds, setInHouseManagerIds] = useState<string[]>([]);
   const [amApprovalRequired, setAmApprovalRequired] = useState(false);
   const [partnerManagerIds, setPartnerManagerIds] = useState<string[]>([]);
@@ -137,6 +150,15 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       setMinThreshold('');
       setPaymentTermDays('');
       setBillingStartDate('');
+      setCurrencyCode('USD');
+      setBankName('');
+      setBankAccountNumber('');
+      setBankIban('');
+      setBankSwiftCode('');
+      setBankRoutingNumber('');
+      setBankAddress('');
+      setPaymentMethod('');
+      setAccountClassification('');
       setInHouseManagerIds([]);
       setAmApprovalRequired(false);
       setPartnerManagerIds([]);
@@ -243,6 +265,15 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       if (minThreshold.trim()) body.minThreshold = Number(minThreshold);
       if (paymentTermDays.trim()) body.paymentTermDays = parseInt(paymentTermDays, 10);
       if (!autoCreateAccount && accountId) body.accountId = accountId;
+      if (currencyCode) body.currencyCode = currencyCode;
+      if (bankName.trim()) body.bankName = bankName.trim();
+      if (bankAccountNumber.trim()) body.bankAccountNumber = bankAccountNumber.trim();
+      if (bankIban.trim()) body.bankIban = bankIban.trim();
+      if (bankSwiftCode.trim()) body.bankSwiftCode = bankSwiftCode.trim();
+      if (bankRoutingNumber.trim()) body.bankRoutingNumber = bankRoutingNumber.trim();
+      if (bankAddress.trim()) body.bankAddress = bankAddress.trim();
+      if (paymentMethod) body.paymentMethod = paymentMethod;
+      if (accountClassification) body.accountClassification = accountClassification;
       if (billingStartDate) body.billingStartDate = billingStartDate;
       if (inHouseManagerIds.length > 0) body.inHouseManagerIds = inHouseManagerIds;
       if (partnerManagerIds.length > 0) body.partnerManagerIds = partnerManagerIds;
@@ -532,6 +563,149 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                   onChange={(e) => setBillingStartDate(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
                 />
+              </div>
+
+              {/* Currency */}
+              <div>
+                <label htmlFor="currencyCode" className="mb-1 block text-sm font-medium text-gray-700">Currency</label>
+                <CurrencySelect id="currencyCode" value={currencyCode} onChange={setCurrencyCode} />
+              </div>
+
+              {/* Account Type (prepayment / post payment) */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Account Type</label>
+                <div className="flex items-center gap-4">
+                  {([
+                    { value: 'PREPAYMENT', label: 'Prepayment' },
+                    { value: 'POSTPAYMENT', label: 'Post Payment' },
+                  ] as const).map((opt) => (
+                    <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="accountClassification"
+                        checked={accountClassification === opt.value}
+                        onChange={() => setAccountClassification(opt.value)}
+                        className="text-primary-600"
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                  {accountClassification && (
+                    <button
+                      type="button"
+                      onClick={() => setAccountClassification('')}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Method of Payment */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Method of Payment</label>
+                <div className="flex items-center gap-4">
+                  {(['WIRE', 'ACH'] as const).map((m) => (
+                    <label key={m} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        checked={paymentMethod === m}
+                        onChange={() => setPaymentMethod(m)}
+                        className="text-primary-600"
+                      />
+                      {m}
+                    </label>
+                  ))}
+                  {paymentMethod && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('')}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Bank Details */}
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                <p className="text-sm font-medium text-gray-700">Bank Details</p>
+
+                <div>
+                  <label htmlFor="bankName" className="mb-1 block text-xs font-medium text-gray-600">Bank Name</label>
+                  <input
+                    id="bankName"
+                    type="text"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    placeholder="e.g. Chase Bank"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="bankAccountNumber" className="mb-1 block text-xs font-medium text-gray-600">Account Number</label>
+                    <input
+                      id="bankAccountNumber"
+                      type="text"
+                      autoComplete="off"
+                      value={bankAccountNumber}
+                      onChange={(e) => setBankAccountNumber(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="bankIban" className="mb-1 block text-xs font-medium text-gray-600">IBAN</label>
+                    <input
+                      id="bankIban"
+                      type="text"
+                      autoComplete="off"
+                      value={bankIban}
+                      onChange={(e) => setBankIban(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="bankSwiftCode" className="mb-1 block text-xs font-medium text-gray-600">Swift / Sort Code</label>
+                    <input
+                      id="bankSwiftCode"
+                      type="text"
+                      autoComplete="off"
+                      value={bankSwiftCode}
+                      onChange={(e) => setBankSwiftCode(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="bankRoutingNumber" className="mb-1 block text-xs font-medium text-gray-600">Routing Number</label>
+                    <input
+                      id="bankRoutingNumber"
+                      type="text"
+                      autoComplete="off"
+                      value={bankRoutingNumber}
+                      onChange={(e) => setBankRoutingNumber(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="bankAddress" className="mb-1 block text-xs font-medium text-gray-600">Bank Address</label>
+                  <input
+                    id="bankAddress"
+                    type="text"
+                    value={bankAddress}
+                    onChange={(e) => setBankAddress(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  />
+                </div>
               </div>
 
               <MultiSelectDropdown
