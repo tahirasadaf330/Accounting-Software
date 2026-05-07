@@ -153,6 +153,8 @@ model Tenant {
   nettingCycleComments NettingCycleComment[]
   auditLogs            AuditLog[]
   voucherAttachments  VoucherAttachment[]
+  voucherComments              VoucherComment[]
+  voucherCommentAttachments    VoucherCommentAttachment[]
   notifications       Notification[]
 
   @@map("tenants")
@@ -179,6 +181,8 @@ model User {
   sentInvitations      Invitation[]         @relation("InvitedByUser")
   createdVouchers      Voucher[]            @relation("VoucherCreatedBy")
   approvedVouchers Voucher[]     @relation("VoucherApprovedBy")
+  markedPaidVouchers Voucher[]   @relation("VoucherMarkedPaidBy")
+  voucherComments      VoucherComment[]
   reconciliations Reconciliation[] @relation("ReconciledBy")
   auditLogs       AuditLog[]
   notifications   Notification[]
@@ -365,6 +369,8 @@ model Voucher {
   rejectionReason String?
   reversedFromId  String?
   contactId       String?
+  markedPaidAt    DateTime?
+  markedPaidById  String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -372,12 +378,14 @@ model Voucher {
   tenant       Tenant              @relation(fields: [tenantId], references: [id])
   createdBy    User                @relation("VoucherCreatedBy", fields: [createdById], references: [id])
   approvedBy   User?               @relation("VoucherApprovedBy", fields: [approvedById], references: [id])
+  markedPaidBy User?               @relation("VoucherMarkedPaidBy", fields: [markedPaidById], references: [id])
   reversedFrom Voucher?            @relation("VoucherReversal", fields: [reversedFromId], references: [id])
   reversals    Voucher[]           @relation("VoucherReversal")
   contact      Contact?            @relation(fields: [contactId], references: [id])
   lineItems              VoucherLineItem[]
   journalEntry           JournalEntry?
   attachments            VoucherAttachment[]
+  comments               VoucherComment[]
   paymentAllocations     PaymentAllocation[] @relation("PaymentVoucher")
   invoiceAllocations     PaymentAllocation[] @relation("InvoiceVoucher")
   nettingCycleInvoices   NettingCycleInvoice[]
@@ -426,6 +434,7 @@ model VoucherAttachment {
   filePath  String
   fileSize  Int
   mimeType  String   @db.VarChar(100)
+  category  String?  @db.VarChar(50)
   createdAt DateTime @default(now())
 
   // Relations
@@ -435,6 +444,42 @@ model VoucherAttachment {
   @@index([voucherId])
   @@index([tenantId])
   @@map("voucher_attachments")
+}
+
+model VoucherComment {
+  id        String   @id @default(uuid())
+  voucherId String
+  tenantId  String
+  userId    String
+  body      String
+  createdAt DateTime @default(now())
+
+  voucher     Voucher                    @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  tenant      Tenant                     @relation(fields: [tenantId], references: [id])
+  user        User                       @relation(fields: [userId], references: [id])
+  attachments VoucherCommentAttachment[]
+
+  @@index([voucherId])
+  @@index([tenantId])
+  @@map("voucher_comments")
+}
+
+model VoucherCommentAttachment {
+  id        String   @id @default(uuid())
+  commentId String
+  tenantId  String
+  fileName  String   @db.VarChar(500)
+  filePath  String
+  fileSize  Int
+  mimeType  String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+
+  comment VoucherComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  tenant  Tenant         @relation(fields: [tenantId], references: [id])
+
+  @@index([commentId])
+  @@index([tenantId])
+  @@map("voucher_comment_attachments")
 }
 
 model JournalEntry {

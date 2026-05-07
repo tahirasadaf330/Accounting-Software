@@ -1,15 +1,32 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { BarChart3, ChevronDown, Printer, Download, FileSpreadsheet } from 'lucide-react';
+import {
+  BarChart3,
+  ChevronDown,
+  Printer,
+  Download,
+  FileSpreadsheet,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  FileText,
+  MessageSquare,
+  CheckCircle2,
+  ExternalLink,
+} from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
 import ReportPrintLayout from './ReportPrintLayout';
 import { useReportPrintPdf } from './useReportPrintPdf';
 import { exportInvoiceReportExcel } from './exportInvoiceReportExcel';
+import ContactQuickViewModal from '@/components/ContactQuickViewModal';
+import CommentsModal from '@/components/CommentsModal';
+import MarkPaidModal from '@/components/MarkPaidModal';
 
 interface Account {
   id: string;
@@ -200,10 +217,120 @@ const AGING_BADGE: Record<string, string> = {
   '91+': 'bg-red-200 text-red-800',
 };
 
-function ARAPReportView({ data, formatAmount }: { data: any; formatAmount: (v: any) => string }) {
+type SortKey =
+  | 'contactName'
+  | 'voucherNumber'
+  | 'date'
+  | 'dueDate'
+  | 'totalAmount'
+  | 'paidAmount'
+  | 'outstandingAmount'
+  | 'agingBucket'
+  | 'markedPaid';
+
+const AGING_ORDER: Record<string, number> = {
+  current: 0,
+  '1-30': 1,
+  '31-60': 2,
+  '61-90': 3,
+  '91+': 4,
+};
+
+function compareValues(a: any, b: any, key: SortKey): number {
+  const va = a[key];
+  const vb = b[key];
+
+  if (key === 'totalAmount' || key === 'paidAmount' || key === 'outstandingAmount') {
+    return Number(va) - Number(vb);
+  }
+  if (key === 'agingBucket') {
+    return (AGING_ORDER[va] ?? 0) - (AGING_ORDER[vb] ?? 0);
+  }
+  if (key === 'markedPaid') {
+    return (va ? 1 : 0) - (vb ? 1 : 0);
+  }
+  // string-ish: contactName, voucherNumber, date, dueDate
+  const sa = String(va ?? '');
+  const sb = String(vb ?? '');
+  return sa.localeCompare(sb);
+}
+
+function SortHeader({
+  label,
+  sortKey,
+  active,
+  direction,
+  onSort,
+  align = 'left',
+}: {
+  label: string;
+  sortKey: SortKey;
+  active: SortKey | null;
+  direction: 'asc' | 'desc';
+  onSort: (k: SortKey) => void;
+  align?: 'left' | 'right' | 'center';
+}) {
+  const isActive = active === sortKey;
+  return (
+    <th
+      className={cn(
+        'px-4 py-3 text-xs font-medium uppercase text-gray-500',
+        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={cn(
+          'inline-flex items-center gap-1 hover:text-gray-900',
+          align === 'right' && 'flex-row-reverse',
+          isActive && 'text-gray-900',
+        )}
+      >
+        {label}
+        {!isActive && <ArrowUpDown className="h-3 w-3 opacity-40" />}
+        {isActive && direction === 'asc' && <ArrowUp className="h-3 w-3" />}
+        {isActive && direction === 'desc' && <ArrowDown className="h-3 w-3" />}
+      </button>
+    </th>
+  );
+}
+
+function ARAPReportView({
+  data,
+  formatAmount,
+  onRefresh,
+}: {
+  data: any;
+  formatAmount: (v: any) => string;
+  onRefresh?: () => void;
+}) {
   const isAR = data.reportType === 'AR';
   const title = isAR ? 'Accounts Receivable (AR) Report' : 'Accounts Payable (AP) Report';
   const contactLabel = isAR ? 'Customer' : 'Vendor';
+
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const [contactModalId, setContactModalId] = useState<string | null>(null);
+  const [commentsVoucher, setCommentsVoucher] = useState<{ id: string; number: string } | null>(null);
+  const [markPaidVoucher, setMarkPaidVoucher] = useState<{ id: string; number: string; alreadyPaid: boolean } | null>(null);
+
+  const handleSort = (k: SortKey) => {
+    if (sortKey === k) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(k);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedRows = useMemo(() => {
+    const rows = data.rows ?? [];
+    if (!sortKey) return rows;
+    const factor = sortDir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => compareValues(a, b, sortKey) * factor);
+  }, [data.rows, sortKey, sortDir]);
 
   return (
     <div>
@@ -249,28 +376,58 @@ function ARAPReportView({ data, formatAmount }: { data: any; formatAmount: (v: a
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{contactLabel}</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Invoice #</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Due Date</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Invoice Amt</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Paid</th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Outstanding</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Aging</th>
+              <SortHeader label={contactLabel} sortKey="contactName" active={sortKey} direction={sortDir} onSort={handleSort} />
+              <SortHeader label="Invoice #" sortKey="voucherNumber" active={sortKey} direction={sortDir} onSort={handleSort} />
+              <SortHeader label="Date" sortKey="date" active={sortKey} direction={sortDir} onSort={handleSort} />
+              <SortHeader label="Due Date" sortKey="dueDate" active={sortKey} direction={sortDir} onSort={handleSort} />
+              <SortHeader label="Invoice Amt" sortKey="totalAmount" active={sortKey} direction={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="Paid" sortKey="paidAmount" active={sortKey} direction={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="Outstanding" sortKey="outstandingAmount" active={sortKey} direction={sortDir} onSort={handleSort} align="right" />
+              <SortHeader label="Aging" sortKey="agingBucket" active={sortKey} direction={sortDir} onSort={handleSort} />
+              <th className="px-3 py-3 text-center text-xs font-medium uppercase text-gray-500" title="Statement of Account">SOA</th>
+              <th className="px-3 py-3 text-center text-xs font-medium uppercase text-gray-500" title="Comments">Comments</th>
+              <SortHeader label="Mark Paid" sortKey="markedPaid" active={sortKey} direction={sortDir} onSort={handleSort} align="center" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {data.rows?.length === 0 && (
+            {sortedRows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-400">
+                <td colSpan={11} className="px-4 py-6 text-center text-sm text-gray-400">
                   No records found for the selected filters.
                 </td>
               </tr>
             )}
-            {data.rows?.map((row: any, i: number) => (
+            {sortedRows.map((row: any, i: number) => (
               <tr key={i} className="hover:bg-gray-50">
-                <td className="px-4 py-2 font-medium text-gray-900">{row.contactName}</td>
-                <td className="whitespace-nowrap px-4 py-2 font-mono text-gray-500">{row.voucherNumber}</td>
+                <td className="px-4 py-2 font-medium">
+                  {row.contactId ? (
+                    <button
+                      type="button"
+                      onClick={() => setContactModalId(row.contactId)}
+                      className="text-primary-700 hover:underline"
+                    >
+                      {row.contactName}
+                    </button>
+                  ) : (
+                    <span className="text-gray-900">{row.contactName}</span>
+                  )}
+                  {row.bankAccountLast4 && (
+                    <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600">
+                      ····{row.bankAccountLast4}
+                    </span>
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-4 py-2 font-mono">
+                  <Link
+                    href={`/dashboard/vouchers/${row.voucherId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-primary-700 hover:underline"
+                  >
+                    {row.voucherNumber}
+                    <ExternalLink className="h-3 w-3 opacity-60" />
+                  </Link>
+                </td>
                 <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.date}</td>
                 <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.dueDate ?? '—'}</td>
                 <td className="whitespace-nowrap px-4 py-2 text-right text-gray-900">{formatAmount(row.totalAmount)}</td>
@@ -286,11 +443,83 @@ function ARAPReportView({ data, formatAmount }: { data: any; formatAmount: (v: a
                     {row.daysOverdue > 0 && <span className="ml-1 opacity-75">({row.daysOverdue}d)</span>}
                   </span>
                 </td>
+                <td className="whitespace-nowrap px-3 py-2 text-center">
+                  {row.contactId ? (
+                    <Link
+                      href={`/dashboard/contacts/${row.contactId}/statement`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex rounded-lg p-1.5 text-gray-500 hover:bg-primary-50 hover:text-primary-700"
+                      title="View Statement of Account"
+                    >
+                      <FileText className="h-4 w-4" />
+                    </Link>
+                  ) : (
+                    <span className="text-gray-300">—</span>
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setCommentsVoucher({ id: row.voucherId, number: row.voucherNumber })}
+                    className="relative inline-flex rounded-lg p-1.5 text-gray-500 hover:bg-primary-50 hover:text-primary-700"
+                    title="View / add comments"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    {row.commentCount > 0 && (
+                      <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-semibold leading-none text-white">
+                        {row.commentCount}
+                      </span>
+                    )}
+                  </button>
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMarkPaidVoucher({
+                        id: row.voucherId,
+                        number: row.voucherNumber,
+                        alreadyPaid: !!row.markedPaid,
+                      })
+                    }
+                    className={cn(
+                      'inline-flex rounded-lg p-1.5 hover:bg-green-50',
+                      row.markedPaid ? 'text-green-600' : 'text-gray-400 hover:text-green-700',
+                    )}
+                    title={row.markedPaid ? 'Fully paid' : 'Mark as paid'}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      <ContactQuickViewModal
+        open={contactModalId != null}
+        contactId={contactModalId}
+        onClose={() => setContactModalId(null)}
+      />
+
+      <CommentsModal
+        open={commentsVoucher != null}
+        voucherId={commentsVoucher?.id ?? null}
+        voucherNumber={commentsVoucher?.number}
+        onClose={() => setCommentsVoucher(null)}
+        onCommentAdded={() => onRefresh?.()}
+      />
+
+      <MarkPaidModal
+        open={markPaidVoucher != null}
+        voucherId={markPaidVoucher?.id ?? null}
+        voucherNumber={markPaidVoucher?.number}
+        alreadyPaid={markPaidVoucher?.alreadyPaid}
+        onClose={() => setMarkPaidVoucher(null)}
+        onSuccess={() => onRefresh?.()}
+      />
     </div>
   );
 }
@@ -838,7 +1067,7 @@ export default function ReportsPage() {
           )}
 
           {(activeReport === 'ar-report' || activeReport === 'ap-report') && reportData && (
-            <ARAPReportView data={reportData} formatAmount={formatAmount} />
+            <ARAPReportView data={reportData} formatAmount={formatAmount} onRefresh={generateReport} />
           )}
 
           {activeReport === 'invoice-report' && (

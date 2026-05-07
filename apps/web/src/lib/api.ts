@@ -130,6 +130,28 @@ export const api = {
     return response.json();
   },
 
+  postFormData: async <T>(endpoint: string, formData: FormData): Promise<T> => {
+    const auth = getTokens();
+    const headers: Record<string, string> = {};
+    if (auth?.accessToken) {
+      headers.Authorization = `Bearer ${auth.accessToken}`;
+    }
+
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Request failed' }));
+      throw new ApiError(response.status, error.message, error.errors);
+    }
+
+    if (response.status === 204) return {} as T;
+    return response.json();
+  },
+
   getFileUrl: async (endpoint: string): Promise<string> => {
     const auth = getTokens();
     const headers: Record<string, string> = {};

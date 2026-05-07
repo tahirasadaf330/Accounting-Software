@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { ArrowLeft, Printer, Download } from 'lucide-react';
@@ -11,6 +12,7 @@ type BalanceNature = 'Receivable' | 'Payable' | 'Settled';
 
 interface StatementLine {
   date: string;
+  voucherId: string;
   voucherNumber: string;
   narration: string;
   debit: string;
@@ -341,7 +343,20 @@ export default function ContactStatementPage() {
                   statement.lines.map((line, i) => (
                     <tr key={i} className="hover:bg-gray-50">
                       <td className="whitespace-nowrap px-4 py-2 text-sm text-gray-500">{line.date}</td>
-                      <td className="whitespace-nowrap px-4 py-2 text-sm font-mono text-gray-600">{line.voucherNumber}</td>
+                      <td className="whitespace-nowrap px-4 py-2 text-sm font-mono text-gray-600">
+                        {line.voucherId ? (
+                          <Link
+                            href={`/dashboard/vouchers/${line.voucherId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary-700 hover:underline"
+                          >
+                            {line.voucherNumber}
+                          </Link>
+                        ) : (
+                          line.voucherNumber
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-sm text-gray-900">{line.narration}</td>
                       <td className="whitespace-nowrap px-4 py-2 text-right text-sm text-gray-900">
                         {Number(line.debit) > 0 ? formatAmount(line.debit) : ''}
