@@ -94,6 +94,7 @@ export class StatementOfAccountService {
             narration: true,
             voucher: {
               select: {
+                id: true,
                 voucherNumber: true,
                 periodEnd: true,
                 contact: { select: { paymentTermDays: true } },
@@ -148,6 +149,7 @@ export class StatementOfAccountService {
 
       return {
         date: dateStr,
+        voucherId: line.journalEntry.voucher.id,
         voucherNumber: line.journalEntry.voucher.voucherNumber,
         narration: line.narration || line.journalEntry.narration,
         debit: debit.toFixed(4),

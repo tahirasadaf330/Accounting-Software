@@ -52,11 +52,12 @@ export class APReportService {
     const vouchers = await this.prisma.voucher.findMany({
       where,
       include: {
-        contact: { select: { id: true, name: true, paymentTermDays: true } },
+        contact: { select: { id: true, name: true, paymentTermDays: true, bankAccountNumber: true } },
         invoiceAllocations: {
           where: { paidAt: { lte: asOfDate } },
           select: { amount: true },
         },
+        _count: { select: { comments: true } },
       },
       orderBy: { date: 'asc' },
     });
@@ -98,11 +99,13 @@ export class APReportService {
         else aging.days91plus = aging.days91plus.plus(outstanding);
       }
 
+      const bankAcct = v.contact?.bankAccountNumber ?? null;
       return {
         voucherId: v.id,
         voucherNumber: v.voucherNumber,
         contactId: v.contactId ?? '',
         contactName: v.contact?.name ?? '—',
+        bankAccountLast4: bankAcct && bankAcct.length >= 4 ? bankAcct.slice(-4) : null,
         date: toDateStr(v.date as unknown as Date)!,
         dueDate: toDateStr(dueDate),
         totalAmount: invoiceAmount.toFixed(4),
@@ -111,8 +114,10 @@ export class APReportService {
         daysOverdue,
         agingBucket: bucket,
         status: v.status,
+        markedPaid: outstanding.lessThanOrEqualTo(0),
         reference: v.reference ?? null,
         narration: v.narration,
+        commentCount: v._count.comments,
       };
     });
 

@@ -49,6 +49,7 @@ export type BalanceNature = 'Receivable' | 'Payable' | 'Settled';
 
 export interface StatementLine {
   date: string;
+  voucherId: string;
   voucherNumber: string;
   narration: string;
   debit: string;
@@ -91,6 +92,7 @@ export interface ARAPRow {
   status: string;
   reference: string | null;
   narration: string;
+  commentCount: number;
 }
 
 export interface ARAPAgingSummary {

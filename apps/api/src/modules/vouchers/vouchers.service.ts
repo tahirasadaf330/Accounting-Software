@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { VoucherStatus, VoucherType, Prisma } from '@prisma/client';
+import { VoucherStatus, VoucherType, AccountType, Prisma } from '@prisma/client';
 import { VOUCHER_TYPE_PREFIX } from '@accounting-saas/shared';
 import { VOUCHER_EVENTS } from '../notifications/events/voucher-events';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
@@ -1634,5 +1634,334 @@ export class VouchersService {
       where: { voucherId, tenantId },
       orderBy: { createdAt: 'asc' },
     });
+  }
+
+  // ─── Comment Methods ─────────────────────────────────────────────
+
+  async listComments(tenantId: string, voucherId: string) {
+    const voucher = await this.prisma.voucher.findFirst({
+      where: { id: voucherId, tenantId },
+      select: { id: true },
+    });
+    if (!voucher) throw new NotFoundException('Voucher not found');
+
+    const comments = await this.prisma.voucherComment.findMany({
+      where: { voucherId, tenantId },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+        attachments: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return comments.map((c) => ({
+      id: c.id,
+      body: c.body,
+      createdAt: c.createdAt.toISOString(),
+      user: {
+        id: c.user.id,
+        name: `${c.user.firstName} ${c.user.lastName}`.trim() || c.user.email,
+        email: c.user.email,
+      },
+      attachments: c.attachments.map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        fileSize: a.fileSize,
+        mimeType: a.mimeType,
+      })),
+    }));
+  }
+
+  async addComment(
+    tenantId: string,
+    voucherId: string,
+    userId: string,
+    body: string,
+    files: { filename: string; mimetype: string; buffer: Buffer }[],
+  ) {
+    const trimmed = (body || '').trim();
+    if (!trimmed && files.length === 0) {
+      throw new BadRequestException('Comment body or at least one attachment is required');
+    }
+
+    const voucher = await this.prisma.voucher.findFirst({
+      where: { id: voucherId, tenantId },
+      select: { id: true },
+    });
+    if (!voucher) throw new NotFoundException('Voucher not found');
+
+    const comment = await this.prisma.voucherComment.create({
+      data: {
+        voucherId,
+        tenantId,
+        userId,
+        body: trimmed,
+      },
+    });
+
+    for (const file of files) {
+      if (!VouchersService.ALLOWED_MIME_TYPES.has(file.mimetype)) {
+        throw new BadRequestException(
+          `File type "${file.mimetype}" is not allowed`,
+        );
+      }
+      const ext = path.extname(file.filename) || '';
+      const storedName = `${randomUUID()}${ext}`;
+      const relativeDir = path.join(tenantId, 'vouchers', voucherId, 'comments', comment.id);
+      const absoluteDir = path.join(VouchersService.UPLOADS_BASE, relativeDir);
+      const relativePath = path.join(relativeDir, storedName);
+      const absolutePath = path.join(absoluteDir, storedName);
+
+      await fs.mkdir(absoluteDir, { recursive: true });
+      await fs.writeFile(absolutePath, file.buffer);
+
+      await this.prisma.voucherCommentAttachment.create({
+        data: {
+          commentId: comment.id,
+          tenantId,
+          fileName: file.filename,
+          filePath: relativePath,
+          fileSize: file.buffer.length,
+          mimeType: file.mimetype,
+        },
+      });
+    }
+
+    const fresh = await this.prisma.voucherComment.findUnique({
+      where: { id: comment.id },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+        attachments: true,
+      },
+    });
+
+    return {
+      id: fresh!.id,
+      body: fresh!.body,
+      createdAt: fresh!.createdAt.toISOString(),
+      user: {
+        id: fresh!.user.id,
+        name: `${fresh!.user.firstName} ${fresh!.user.lastName}`.trim() || fresh!.user.email,
+        email: fresh!.user.email,
+      },
+      attachments: fresh!.attachments.map((a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        fileSize: a.fileSize,
+        mimeType: a.mimeType,
+      })),
+    };
+  }
+
+  async getCommentAttachmentForDownload(
+    tenantId: string,
+    voucherId: string,
+    commentId: string,
+    attachmentId: string,
+  ) {
+    const attachment = await this.prisma.voucherCommentAttachment.findFirst({
+      where: {
+        id: attachmentId,
+        tenantId,
+        commentId,
+        comment: { voucherId, tenantId },
+      },
+    });
+
+    if (!attachment) throw new NotFoundException('Attachment not found');
+
+    const absolutePath = path.join(
+      VouchersService.UPLOADS_BASE,
+      attachment.filePath,
+    );
+
+    try {
+      await fs.access(absolutePath);
+    } catch {
+      throw new NotFoundException('Attachment file not found on disk');
+    }
+
+    return {
+      absolutePath,
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+      fileSize: attachment.fileSize,
+    };
+  }
+
+  // ─── Mark Paid ──────────────────────────────────────────────────
+  //
+  // Creates a real PAYMENT (for AP) or RECEIPT (for AR) voucher allocated
+  // against the invoice, in one transaction. After this runs, the invoice's
+  // outstanding goes to zero and it drops off the AP/AR report. Optional
+  // payment-proof file is attached to the new payment voucher.
+
+  async markPaid(
+    tenantId: string,
+    invoiceVoucherId: string,
+    userId: string,
+    opts: {
+      bankAccountId?: string;
+      paymentDate?: string;
+      file?: { filename: string; mimetype: string; buffer: Buffer };
+    },
+  ) {
+    let bankAccountId = opts.bankAccountId;
+    if (!bankAccountId) {
+      const defaultBank = await this.prisma.bankAccount.findFirst({
+        where: { tenantId, isActive: true },
+        orderBy: { createdAt: 'asc' },
+        select: { accountId: true },
+      });
+      if (defaultBank) {
+        bankAccountId = defaultBank.accountId;
+      } else {
+        const fallbackAsset = await this.prisma.account.findFirst({
+          where: { tenantId, accountType: AccountType.ASSET, isActive: true },
+          orderBy: { code: 'asc' },
+          select: { id: true },
+        });
+        if (!fallbackAsset) {
+          throw new BadRequestException(
+            'No bank/cash account found for this tenant. Please configure one before marking invoices as paid.',
+          );
+        }
+        bankAccountId = fallbackAsset.id;
+      }
+    }
+
+    const invoice = await this.prisma.voucher.findFirst({
+      where: { id: invoiceVoucherId, tenantId },
+      include: {
+        contact: { select: { id: true, accountId: true } },
+        invoiceAllocations: { select: { amount: true } },
+      },
+    });
+    if (!invoice) throw new NotFoundException('Invoice voucher not found');
+    if (invoice.status !== VoucherStatus.POSTED) {
+      throw new BadRequestException(
+        'Only POSTED invoices can be marked as paid',
+      );
+    }
+    if (
+      invoice.voucherType !== VoucherType.PURCHASE &&
+      invoice.voucherType !== VoucherType.SALES
+    ) {
+      throw new BadRequestException(
+        'Only sales or purchase invoices can be marked as paid',
+      );
+    }
+    if (!invoice.contactId || !invoice.contact?.accountId) {
+      throw new BadRequestException(
+        'Invoice contact must have a linked trade account',
+      );
+    }
+
+    const total = new Decimal(invoice.totalAmount.toString());
+    const paid = invoice.invoiceAllocations.reduce(
+      (s, a) => s.plus(new Decimal(a.amount.toString())),
+      new Decimal(0),
+    );
+    const outstanding = total.minus(paid);
+    if (outstanding.lessThanOrEqualTo(0)) {
+      throw new BadRequestException('Invoice is already fully paid');
+    }
+
+    const bank = await this.prisma.account.findFirst({
+      where: { id: bankAccountId, tenantId, isActive: true },
+      select: { id: true },
+    });
+    if (!bank) throw new NotFoundException('Bank account not found');
+
+    const isAP = invoice.voucherType === VoucherType.PURCHASE;
+    const tradeAccountId = invoice.contact.accountId;
+    const amountStr = outstanding.toFixed(4);
+    const paymentDate = opts.paymentDate
+      ? new Date(opts.paymentDate)
+      : new Date();
+    const paymentDateStr = paymentDate.toISOString().split('T')[0];
+
+    // Double-entry:
+    //   AP (settling a purchase invoice → cash leaves):
+    //     Dr Trade Payable (contact's trade account)
+    //     Cr Bank
+    //   AR (settling a sales invoice → cash arrives):
+    //     Dr Bank
+    //     Cr Trade Receivable (contact's trade account)
+    const lineItems = isAP
+      ? [
+          { accountId: tradeAccountId, debit: amountStr, credit: '0', narration: `Payment for ${invoice.voucherNumber}` },
+          { accountId: bankAccountId, debit: '0', credit: amountStr, narration: 'Bank' },
+        ]
+      : [
+          { accountId: bankAccountId, debit: amountStr, credit: '0', narration: 'Bank' },
+          { accountId: tradeAccountId, debit: '0', credit: amountStr, narration: `Receipt for ${invoice.voucherNumber}` },
+        ];
+
+    const paymentVoucherType = isAP ? VoucherType.PAYMENT : VoucherType.RECEIPT;
+    const narration = isAP
+      ? `Payment against ${invoice.voucherNumber}`
+      : `Receipt against ${invoice.voucherNumber}`;
+
+    const result = await this.createWithAllocations(tenantId, userId, {
+      voucher: {
+        voucherType: paymentVoucherType,
+        date: paymentDateStr,
+        narration,
+        contactId: invoice.contactId,
+        currencyCode: invoice.currencyCode,
+        lineItems,
+      },
+      allocations: [
+        {
+          invoiceVoucherId: invoice.id,
+          amount: outstanding.toNumber(),
+          paidAt: paymentDateStr,
+        },
+      ],
+    } as any);
+
+    if (!result) {
+      throw new Error('Failed to create payment voucher');
+    }
+
+    if (opts.file) {
+      if (!VouchersService.ALLOWED_MIME_TYPES.has(opts.file.mimetype)) {
+        throw new BadRequestException(
+          `File type "${opts.file.mimetype}" is not allowed`,
+        );
+      }
+      const ext = path.extname(opts.file.filename) || '';
+      const storedName = `${randomUUID()}${ext}`;
+      const relativeDir = path.join(tenantId, 'vouchers', result.id);
+      const absoluteDir = path.join(VouchersService.UPLOADS_BASE, relativeDir);
+      const relativePath = path.join(relativeDir, storedName);
+      const absolutePath = path.join(absoluteDir, storedName);
+
+      await fs.mkdir(absoluteDir, { recursive: true });
+      await fs.writeFile(absolutePath, opts.file.buffer);
+
+      // Attach directly via Prisma — bypasses the DRAFT-only restriction
+      // because createWithAllocations posts the voucher immediately and we
+      // still need to associate the proof with it.
+      await this.prisma.voucherAttachment.create({
+        data: {
+          voucherId: result.id,
+          tenantId,
+          fileName: opts.file.filename,
+          filePath: relativePath,
+          fileSize: opts.file.buffer.length,
+          mimeType: opts.file.mimetype,
+          category: 'payment_proof',
+        },
+      });
+    }
+
+    return {
+      paymentVoucherId: result.id,
+      paymentVoucherNumber: result.voucherNumber,
+      amount: amountStr,
+      paymentDate: paymentDateStr,
+    };
   }
 }

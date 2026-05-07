@@ -274,4 +274,109 @@ export class VouchersController {
   ) {
     await this.vouchersService.deleteAttachment(tenantId, id, attachmentId);
   }
+
+  // ─── Comment Endpoints ────────────────────────────────────────
+
+  @Get(':id/comments')
+  @ApiOperation({ summary: 'List comments on a voucher' })
+  async listComments(
+    @TenantId() tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.vouchersService.listComments(tenantId, id);
+  }
+
+  @Post(':id/comments')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Add a comment (with optional attachments) to a voucher' })
+  async addComment(
+    @TenantId() tenantId: string,
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: FastifyRequest,
+  ) {
+    const parts = req.parts();
+    const files: { filename: string; mimetype: string; buffer: Buffer }[] = [];
+    let body = '';
+
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of part.file) chunks.push(chunk);
+        const buf = Buffer.concat(chunks);
+        if (buf.length === 0) continue;
+        files.push({ filename: part.filename, mimetype: part.mimetype, buffer: buf });
+      } else if (part.type === 'field' && part.fieldname === 'body') {
+        body = String(part.value ?? '');
+      }
+    }
+
+    return this.vouchersService.addComment(tenantId, id, userId, body, files);
+  }
+
+  @Get(':id/comments/:commentId/attachments/:attachmentId/download')
+  @ApiOperation({ summary: 'Download a comment attachment' })
+  async downloadCommentAttachment(
+    @TenantId() tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Res() reply: FastifyReply,
+  ) {
+    const { absolutePath, fileName, mimeType, fileSize } =
+      await this.vouchersService.getCommentAttachmentForDownload(
+        tenantId,
+        id,
+        commentId,
+        attachmentId,
+      );
+
+    const encodedName = encodeURIComponent(fileName);
+    reply.header('Content-Type', mimeType);
+    reply.header(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodedName}`,
+    );
+    reply.header('Content-Length', fileSize);
+
+    const stream = fs.createReadStream(absolutePath);
+    return reply.send(stream);
+  }
+
+  // ─── Mark Paid Endpoint ───────────────────────────────────────
+
+  @Post(':id/mark-paid')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Mark an invoice as paid by creating a real payment/receipt voucher allocated against it' })
+  async markPaid(
+    @TenantId() tenantId: string,
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: FastifyRequest,
+  ) {
+    const parts = req.parts();
+    let file: { filename: string; mimetype: string; buffer: Buffer } | undefined;
+    let bankAccountId = '';
+    let paymentDate: string | undefined;
+
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of part.file) chunks.push(chunk);
+        const buf = Buffer.concat(chunks);
+        if (buf.length > 0) {
+          file = { filename: part.filename, mimetype: part.mimetype, buffer: buf };
+        }
+      } else if (part.type === 'field') {
+        if (part.fieldname === 'bankAccountId') bankAccountId = String(part.value ?? '');
+        else if (part.fieldname === 'paymentDate') paymentDate = String(part.value ?? '') || undefined;
+      }
+    }
+
+    return this.vouchersService.markPaid(tenantId, id, userId, {
+      bankAccountId,
+      paymentDate,
+      file,
+    });
+  }
 }
