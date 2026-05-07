@@ -324,6 +324,7 @@ export class ARReportService {
           status: cycle.status,
           reference: null,
           narration: `Netting settlement (${toDateStr(cycle.startDate)} – ${toDateStr(cycle.endDate)})`,
+          commentCount: 0,
           nettingCycleId: cycle.id,
           nettingCycleStatus: cycle.status,
           isNettingSettlement: true,
