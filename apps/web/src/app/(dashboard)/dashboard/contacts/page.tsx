@@ -27,6 +27,7 @@ interface Contact {
   minThreshold: string | null;
   paymentTermDays: number | null;
   currencyCode: string;
+  bankBeneficiaryName: string | null;
   bankName: string | null;
   bankAccountNumber: string | null;
   bankIban: string | null;

@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "NotificationType" ADD VALUE 'INVOICE_PAID';
+ALTER TYPE "NotificationType" ADD VALUE 'VOUCHER_COMMENT_ADDED';

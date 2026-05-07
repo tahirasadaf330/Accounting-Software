@@ -1686,7 +1686,7 @@ export class VouchersService {
 
     const voucher = await this.prisma.voucher.findFirst({
       where: { id: voucherId, tenantId },
-      select: { id: true },
+      select: { id: true, voucherNumber: true },
     });
     if (!voucher) throw new NotFoundException('Voucher not found');
 
@@ -1735,13 +1735,26 @@ export class VouchersService {
       },
     });
 
+    const actorName =
+      `${fresh!.user.firstName} ${fresh!.user.lastName}`.trim() || fresh!.user.email;
+
+    this.eventEmitter.emit(VOUCHER_EVENTS.COMMENT_ADDED, {
+      tenantId,
+      voucherId: voucher.id,
+      voucherNumber: voucher.voucherNumber,
+      commentId: fresh!.id,
+      commentBody: fresh!.body,
+      actorId: userId,
+      actorName,
+    });
+
     return {
       id: fresh!.id,
       body: fresh!.body,
       createdAt: fresh!.createdAt.toISOString(),
       user: {
         id: fresh!.user.id,
-        name: `${fresh!.user.firstName} ${fresh!.user.lastName}`.trim() || fresh!.user.email,
+        name: actorName,
         email: fresh!.user.email,
       },
       attachments: fresh!.attachments.map((a) => ({
@@ -1833,7 +1846,7 @@ export class VouchersService {
     const invoice = await this.prisma.voucher.findFirst({
       where: { id: invoiceVoucherId, tenantId },
       include: {
-        contact: { select: { id: true, accountId: true } },
+        contact: { select: { id: true, accountId: true, name: true } },
         invoiceAllocations: { select: { amount: true } },
       },
     });
@@ -1956,6 +1969,28 @@ export class VouchersService {
         },
       });
     }
+
+    const actor = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true, email: true },
+    });
+    const actorName = actor
+      ? `${actor.firstName} ${actor.lastName}`.trim() || actor.email
+      : 'Someone';
+
+    this.eventEmitter.emit(VOUCHER_EVENTS.MARKED_PAID, {
+      tenantId,
+      voucherId: invoice.id,
+      voucherNumber: invoice.voucherNumber,
+      paymentVoucherId: result.id,
+      paymentVoucherNumber: result.voucherNumber,
+      amount: amountStr,
+      paymentDate: paymentDateStr,
+      isAR: !isAP,
+      contactName: invoice.contact?.name || '—',
+      actorId: userId,
+      actorName,
+    });
 
     return {
       paymentVoucherId: result.id,

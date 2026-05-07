@@ -114,6 +114,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
   const [paymentTermDays, setPaymentTermDays] = useState('');
   const [billingStartDate, setBillingStartDate] = useState('');
   const [currencyCode, setCurrencyCode] = useState('USD');
+  const [bankBeneficiaryName, setBankBeneficiaryName] = useState('');
   const [bankName, setBankName] = useState('');
   const [bankAccountNumber, setBankAccountNumber] = useState('');
   const [bankIban, setBankIban] = useState('');
@@ -266,6 +267,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       if (paymentTermDays.trim()) body.paymentTermDays = parseInt(paymentTermDays, 10);
       if (!autoCreateAccount && accountId) body.accountId = accountId;
       if (currencyCode) body.currencyCode = currencyCode;
+      if (bankBeneficiaryName.trim()) body.bankBeneficiaryName = bankBeneficiaryName.trim();
       if (bankName.trim()) body.bankName = bankName.trim();
       if (bankAccountNumber.trim()) body.bankAccountNumber = bankAccountNumber.trim();
       if (bankIban.trim()) body.bankIban = bankIban.trim();
@@ -633,6 +635,18 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
               {/* Bank Details */}
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
                 <p className="text-sm font-medium text-gray-700">Bank Details</p>
+
+                <div>
+                  <label htmlFor="bankBeneficiaryName" className="mb-1 block text-xs font-medium text-gray-600">Beneficiary Name</label>
+                  <input
+                    id="bankBeneficiaryName"
+                    type="text"
+                    value={bankBeneficiaryName}
+                    onChange={(e) => setBankBeneficiaryName(e.target.value)}
+                    placeholder="Account holder name"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  />
+                </div>
 
                 <div>
                   <label htmlFor="bankName" className="mb-1 block text-xs font-medium text-gray-600">Bank Name</label>

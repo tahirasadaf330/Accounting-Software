@@ -18,6 +18,7 @@ interface ContactDetail {
   taxId: string | null;
   currencyCode: string;
   paymentTermDays: number | null;
+  bankBeneficiaryName: string | null;
   bankName: string | null;
   bankAccountNumber: string | null;
   bankIban: string | null;
@@ -150,6 +151,7 @@ export default function ContactQuickViewModal({ open, contactId, onClose }: Prop
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase text-gray-600">Bank Details</p>
                 <div className="grid grid-cols-2 gap-4">
+                  <Field label="Beneficiary Name" value={contact.bankBeneficiaryName} />
                   <Field label="Bank Name" value={contact.bankName} />
                   <Field label="Account Number" value={contact.bankAccountNumber} />
                   <Field label="IBAN" value={contact.bankIban} />
