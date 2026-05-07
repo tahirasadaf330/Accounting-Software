@@ -93,6 +93,9 @@ export interface ARAPRow {
   reference: string | null;
   narration: string;
   commentCount: number;
+  nettingCycleId?: string | null;
+  nettingCycleStatus?: string | null;
+  isNettingSettlement?: boolean;
 }
 
 export interface ARAPAgingSummary {
@@ -112,6 +115,8 @@ export interface ARAPReport {
     totalInvoiced: string;
     totalPaid: string;
     totalOutstanding: string;
+    grossOutstanding: string;
+    nettingAdjustment: string;
     aging: ARAPAgingSummary;
   };
   generatedAt: string;
@@ -119,5 +124,6 @@ export interface ARAPReport {
     asOfDate: string | null;
     contactId: string | null;
     showOutstandingOnly: boolean;
+    includeNettingAdjustments: boolean;
   };
 }

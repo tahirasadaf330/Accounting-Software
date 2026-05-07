@@ -249,7 +249,6 @@ function compareValues(a: any, b: any, key: SortKey): number {
   if (key === 'markedPaid') {
     return (va ? 1 : 0) - (vb ? 1 : 0);
   }
-  // string-ish: contactName, voucherNumber, date, dueDate
   const sa = String(va ?? '');
   const sb = String(vb ?? '');
   return sa.localeCompare(sb);
@@ -296,6 +295,8 @@ function SortHeader({
   );
 }
 
+const PENDING_NETTING_STATUSES = new Set(['OPEN', 'PENDING_AM', 'PENDING_CEO']);
+
 function ARAPReportView({
   data,
   formatAmount,
@@ -308,6 +309,7 @@ function ARAPReportView({
   const isAR = data.reportType === 'AR';
   const title = isAR ? 'Accounts Receivable (AR) Report' : 'Accounts Payable (AP) Report';
   const contactLabel = isAR ? 'Customer' : 'Vendor';
+  const hasNettingAdjustment = Number(data.summary?.nettingAdjustment) > 0;
 
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -356,7 +358,7 @@ function ARAPReportView({
       </div>
 
       {/* Summary totals */}
-      <div className="mb-6 grid grid-cols-3 gap-4">
+      <div className={cn('mb-6 grid gap-4', hasNettingAdjustment ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3')}>
         <div className="rounded-lg bg-gray-50 p-4 ring-1 ring-gray-200">
           <p className="text-xs font-medium uppercase text-gray-500">Total Invoiced</p>
           <p className="mt-1 text-lg font-bold text-gray-800">{formatAmount(data.summary.totalInvoiced)}</p>
@@ -365,8 +367,24 @@ function ARAPReportView({
           <p className="text-xs font-medium uppercase text-blue-600">Total Paid</p>
           <p className="mt-1 text-lg font-bold text-blue-800">{formatAmount(data.summary.totalPaid)}</p>
         </div>
-        <div className={cn('rounded-lg p-4 ring-1', Number(data.summary.totalOutstanding) > 0 ? 'bg-red-50 ring-red-200' : 'bg-green-50 ring-green-200')}>
-          <p className={cn('text-xs font-medium uppercase', Number(data.summary.totalOutstanding) > 0 ? 'text-red-600' : 'text-green-600')}>Total Outstanding</p>
+        {hasNettingAdjustment && (
+          <div className="rounded-lg bg-gray-50 p-4 ring-1 ring-gray-200">
+            <p className="text-xs font-medium uppercase text-gray-500">Gross Outstanding</p>
+            <p className="mt-1 text-lg font-bold text-gray-700">{formatAmount(data.summary.grossOutstanding)}</p>
+            <p className="mt-0.5 text-xs text-gray-400">Before netting offset</p>
+          </div>
+        )}
+        {hasNettingAdjustment && (
+          <div className="rounded-lg bg-purple-50 p-4 ring-1 ring-purple-200">
+            <p className="text-xs font-medium uppercase text-purple-600">Netting Offset</p>
+            <p className="mt-1 text-lg font-bold text-purple-800">−{formatAmount(data.summary.nettingAdjustment)}</p>
+            <p className="mt-0.5 text-xs text-purple-400">Approved cycle offsets</p>
+          </div>
+        )}
+        <div className={cn('rounded-lg p-4 ring-1', hasNettingAdjustment ? 'sm:col-span-1' : '', Number(data.summary.totalOutstanding) > 0 ? 'bg-red-50 ring-red-200' : 'bg-green-50 ring-green-200')}>
+          <p className={cn('text-xs font-medium uppercase', Number(data.summary.totalOutstanding) > 0 ? 'text-red-600' : 'text-green-600')}>
+            {hasNettingAdjustment ? 'Net Outstanding' : 'Total Outstanding'}
+          </p>
           <p className={cn('mt-1 text-lg font-bold', Number(data.summary.totalOutstanding) > 0 ? 'text-red-800' : 'text-green-800')}>{formatAmount(data.summary.totalOutstanding)}</p>
         </div>
       </div>
@@ -397,103 +415,137 @@ function ARAPReportView({
                 </td>
               </tr>
             )}
-            {sortedRows.map((row: any, i: number) => (
-              <tr key={i} className="hover:bg-gray-50">
-                <td className="px-4 py-2 font-medium">
-                  {row.contactId ? (
-                    <button
-                      type="button"
-                      onClick={() => setContactModalId(row.contactId)}
-                      className="text-primary-700 hover:underline"
-                    >
-                      {row.contactName}
-                    </button>
-                  ) : (
-                    <span className="text-gray-900">{row.contactName}</span>
+            {sortedRows.map((row: any, i: number) => {
+              const isSettlement = row.isNettingSettlement === true;
+              const isPendingNetting = !isSettlement && row.nettingCycleId && PENDING_NETTING_STATUSES.has(row.nettingCycleStatus);
+
+              return (
+                <tr
+                  key={i}
+                  className={cn(
+                    isSettlement ? 'bg-purple-50 hover:bg-purple-100' : 'hover:bg-gray-50',
                   )}
-                  {row.bankAccountLast4 && (
-                    <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600">
-                      ····{row.bankAccountLast4}
-                    </span>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 font-mono">
-                  <Link
-                    href={`/dashboard/vouchers/${row.voucherId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-primary-700 hover:underline"
-                  >
-                    {row.voucherNumber}
-                    <ExternalLink className="h-3 w-3 opacity-60" />
-                  </Link>
-                </td>
-                <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.date}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.dueDate ?? '—'}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-right text-gray-900">{formatAmount(row.totalAmount)}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-right text-blue-700">{formatAmount(row.paidAmount)}</td>
-                <td className="whitespace-nowrap px-4 py-2 text-right font-semibold">
-                  <span className={Number(row.outstandingAmount) > 0 ? 'text-red-700' : 'text-green-600'}>
-                    {formatAmount(row.outstandingAmount)}
-                  </span>
-                </td>
-                <td className="whitespace-nowrap px-4 py-2">
-                  <span className={cn('rounded px-2 py-0.5 text-xs font-medium', AGING_BADGE[row.agingBucket])}>
-                    {AGING_LABELS[row.agingBucket]}
-                    {row.daysOverdue > 0 && <span className="ml-1 opacity-75">({row.daysOverdue}d)</span>}
-                  </span>
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-center">
-                  {row.contactId ? (
-                    <Link
-                      href={`/dashboard/contacts/${row.contactId}/statement`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex rounded-lg p-1.5 text-gray-500 hover:bg-primary-50 hover:text-primary-700"
-                      title="View Statement of Account"
-                    >
-                      <FileText className="h-4 w-4" />
-                    </Link>
-                  ) : (
-                    <span className="text-gray-300">—</span>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-center">
-                  <button
-                    type="button"
-                    onClick={() => setCommentsVoucher({ id: row.voucherId, number: row.voucherNumber })}
-                    className="relative inline-flex rounded-lg p-1.5 text-gray-500 hover:bg-primary-50 hover:text-primary-700"
-                    title="View / add comments"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    {row.commentCount > 0 && (
-                      <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-semibold leading-none text-white">
-                        {row.commentCount}
+                >
+                  <td className="px-4 py-2 font-medium">
+                    {isSettlement ? (
+                      <span className="text-purple-700">{row.contactName}</span>
+                    ) : row.contactId ? (
+                      <button
+                        type="button"
+                        onClick={() => setContactModalId(row.contactId)}
+                        className="text-primary-700 hover:underline"
+                      >
+                        {row.contactName}
+                      </button>
+                    ) : (
+                      <span className="text-gray-900">{row.contactName}</span>
+                    )}
+                    {!isSettlement && row.bankAccountLast4 && (
+                      <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600">
+                        ····{row.bankAccountLast4}
                       </span>
                     )}
-                  </button>
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-center">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setMarkPaidVoucher({
-                        id: row.voucherId,
-                        number: row.voucherNumber,
-                        alreadyPaid: !!row.markedPaid,
-                      })
-                    }
-                    className={cn(
-                      'inline-flex rounded-lg p-1.5 hover:bg-green-50',
-                      row.markedPaid ? 'text-green-600' : 'text-gray-400 hover:text-green-700',
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 font-mono">
+                    {isSettlement ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-semibold text-purple-700">NET</span>
+                        <span className="text-purple-700">Netting Settlement</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5">
+                        <Link
+                          href={`/dashboard/vouchers/${row.voucherId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-primary-700 hover:underline"
+                        >
+                          {row.voucherNumber}
+                          <ExternalLink className="h-3 w-3 opacity-60" />
+                        </Link>
+                        {isPendingNetting && (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+                            Pending Netting
+                          </span>
+                        )}
+                      </span>
                     )}
-                    title={row.markedPaid ? 'Fully paid' : 'Mark as paid'}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.date}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.dueDate ?? '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right text-gray-900">{formatAmount(row.totalAmount)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right text-blue-700">{formatAmount(row.paidAmount)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right font-semibold">
+                    <span className={Number(row.outstandingAmount) > 0 ? 'text-red-700' : 'text-green-600'}>
+                      {formatAmount(row.outstandingAmount)}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2">
+                    <span className={cn('rounded px-2 py-0.5 text-xs font-medium', AGING_BADGE[row.agingBucket])}>
+                      {AGING_LABELS[row.agingBucket]}
+                      {row.daysOverdue > 0 && <span className="ml-1 opacity-75">({row.daysOverdue}d)</span>}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-center">
+                    {!isSettlement && row.contactId ? (
+                      <Link
+                        href={`/dashboard/contacts/${row.contactId}/statement`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex rounded-lg p-1.5 text-gray-500 hover:bg-primary-50 hover:text-primary-700"
+                        title="View Statement of Account"
+                      >
+                        <FileText className="h-4 w-4" />
+                      </Link>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-center">
+                    {!isSettlement ? (
+                      <button
+                        type="button"
+                        onClick={() => setCommentsVoucher({ id: row.voucherId, number: row.voucherNumber })}
+                        className="relative inline-flex rounded-lg p-1.5 text-gray-500 hover:bg-primary-50 hover:text-primary-700"
+                        title="View / add comments"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        {row.commentCount > 0 && (
+                          <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-semibold leading-none text-white">
+                            {row.commentCount}
+                          </span>
+                        )}
+                      </button>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-center">
+                    {!isSettlement ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMarkPaidVoucher({
+                            id: row.voucherId,
+                            number: row.voucherNumber,
+                            alreadyPaid: !!row.markedPaid,
+                          })
+                        }
+                        className={cn(
+                          'inline-flex rounded-lg p-1.5 hover:bg-green-50',
+                          row.markedPaid ? 'text-green-600' : 'text-gray-400 hover:text-green-700',
+                        )}
+                        title={row.markedPaid ? 'Fully paid' : 'Mark as paid'}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -549,6 +601,7 @@ export default function ReportsPage() {
   const [arApFilters, setArApFilters] = useState({
     contactId: '',
     showOutstandingOnly: true,
+    includeNettingAdjustments: true,
   });
   const reports = [
     { id: 'trial-balance' as const, name: 'Trial Balance' },
@@ -570,7 +623,7 @@ export default function ReportsPage() {
       setReportData(null);
       setSelectedAccountId('');
       setInvoiceFilters({ type: '', contactId: '', periodStart: '', periodEnd: '' });
-      setArApFilters({ contactId: '', showOutstandingOnly: true });
+      setArApFilters({ contactId: '', showOutstandingOnly: true, includeNettingAdjustments: true });
     }
   }, [searchParams]);
 
@@ -640,6 +693,7 @@ export default function ReportsPage() {
           const params: Record<string, string> = { asOfDate: dateRange.toDate };
           if (arApFilters.contactId) params.contactId = arApFilters.contactId;
           params.showOutstandingOnly = String(arApFilters.showOutstandingOnly);
+          params.includeNettingAdjustments = String(arApFilters.includeNettingAdjustments);
           data = await api.get('/reports/ar', params);
           break;
         }
@@ -647,6 +701,7 @@ export default function ReportsPage() {
           const params: Record<string, string> = { asOfDate: dateRange.toDate };
           if (arApFilters.contactId) params.contactId = arApFilters.contactId;
           params.showOutstandingOnly = String(arApFilters.showOutstandingOnly);
+          params.includeNettingAdjustments = String(arApFilters.includeNettingAdjustments);
           data = await api.get('/reports/ap', params);
           break;
         }
@@ -678,7 +733,7 @@ export default function ReportsPage() {
         {reports.map((r) => (
           <button
             key={r.id}
-            onClick={() => { setActiveReport(r.id); setReportData(null); setError(null); setSelectedAccountId(''); setInvoiceFilters({ type: '', contactId: '', periodStart: '', periodEnd: '' }); setArApFilters({ contactId: '', showOutstandingOnly: true }); }}
+            onClick={() => { setActiveReport(r.id); setReportData(null); setError(null); setSelectedAccountId(''); setInvoiceFilters({ type: '', contactId: '', periodStart: '', periodEnd: '' }); setArApFilters({ contactId: '', showOutstandingOnly: true, includeNettingAdjustments: true }); }}
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium',
               activeReport === r.id
@@ -769,7 +824,7 @@ export default function ReportsPage() {
                 onChange={(id) => setArApFilters((p) => ({ ...p, contactId: id }))}
               />
             </div>
-            <div className="flex items-end gap-2">
+            <div className="flex items-end gap-4">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
                 <input
                   type="checkbox"
@@ -778,6 +833,15 @@ export default function ReportsPage() {
                   className="h-4 w-4 rounded border-gray-300 text-primary-600"
                 />
                 Outstanding only
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={arApFilters.includeNettingAdjustments}
+                  onChange={(e) => setArApFilters((p) => ({ ...p, includeNettingAdjustments: e.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600"
+                />
+                Netting-adjusted view
               </label>
             </div>
           </>

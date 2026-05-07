@@ -1,4 +1,4 @@
-import { IsOptional, IsDateString, IsUUID, IsBoolean } from 'class-validator';
+import { IsOptional, IsDateString, IsUUID, IsBoolean, IsBooleanString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 
@@ -24,4 +24,13 @@ export class ARAPReportQueryDto {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   showOutstandingOnly?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'When false, shows gross view with all invoices individually. Defaults to true.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBooleanString()
+  @Transform(({ value }) => value === 'true' || value === true)
+  includeNettingAdjustments?: boolean;
 }
