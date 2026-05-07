@@ -10,7 +10,11 @@ import {
   VoucherApprovedPayload,
   VoucherRejectedPayload,
   VoucherReversedPayload,
+  VoucherMarkedPaidPayload,
+  VoucherCommentAddedPayload,
 } from './events/voucher-events';
+
+const FINANCE_ROLES = ['SUPER_ADMIN', 'OWNER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT'] as const;
 
 @Injectable()
 export class NotificationEventsListener {
@@ -186,6 +190,134 @@ export class NotificationEventsListener {
     } catch (error) {
       this.logger.error(
         `Failed to create notification for voucher rejected: ${error}`,
+      );
+    }
+  }
+
+  @OnEvent(VOUCHER_EVENTS.MARKED_PAID, { async: true })
+  async handleVoucherMarkedPaid(payload: VoucherMarkedPaidPayload) {
+    this.logger.log(
+      `Received VOUCHER_MARKED_PAID event for voucher ${payload.voucherNumber}`,
+    );
+    try {
+      const recipients = await this.notificationsService.findUsersByRoles(
+        payload.tenantId,
+        [...FINANCE_ROLES],
+      );
+
+      const filtered = recipients.filter((u) => u.id !== payload.actorId);
+      if (filtered.length === 0) {
+        this.logger.log('No recipients after filtering, skipping');
+        return;
+      }
+
+      const title = payload.isAR ? 'Payment Received' : 'Payment Sent';
+      const direction = payload.isAR ? 'received against' : 'sent against';
+      const inAppMessage = `${payload.actorName} marked ${payload.voucherNumber} as paid (${payload.amount} ${direction} ${payload.contactName}).`;
+
+      await this.notificationsService.createMany(
+        filtered.map((u) => ({
+          tenantId: payload.tenantId,
+          userId: u.id,
+          type: NotificationType.INVOICE_PAID,
+          title,
+          message: inAppMessage,
+          referenceId: payload.voucherId,
+          referenceType: 'VOUCHER',
+        })),
+      );
+
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: payload.tenantId },
+        select: { name: true },
+      });
+      const companyName = tenant?.name || 'Accounting SaaS';
+
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: filtered.map((u) => u.id) }, status: 'ACTIVE' },
+        select: { email: true, firstName: true },
+      });
+
+      await Promise.all(
+        users.map((u) =>
+          this.mailService.sendInvoicePaidNotification({
+            email: u.email,
+            firstName: u.firstName,
+            companyName,
+            voucherNumber: payload.voucherNumber,
+            paymentVoucherNumber: payload.paymentVoucherNumber,
+            amount: payload.amount,
+            paymentDate: payload.paymentDate,
+            contactName: payload.contactName,
+            actorName: payload.actorName,
+            isAR: payload.isAR,
+          }),
+        ),
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to handle voucher marked paid: ${error}`,
+      );
+    }
+  }
+
+  @OnEvent(VOUCHER_EVENTS.COMMENT_ADDED, { async: true })
+  async handleVoucherCommentAdded(payload: VoucherCommentAddedPayload) {
+    this.logger.log(
+      `Received VOUCHER_COMMENT_ADDED event for voucher ${payload.voucherNumber}`,
+    );
+    try {
+      const recipients = await this.notificationsService.findUsersByRoles(
+        payload.tenantId,
+        [...FINANCE_ROLES],
+      );
+
+      const filtered = recipients.filter((u) => u.id !== payload.actorId);
+      if (filtered.length === 0) {
+        this.logger.log('No recipients after filtering, skipping');
+        return;
+      }
+
+      const inAppMessage = `${payload.actorName} commented on ${payload.voucherNumber}.`;
+
+      await this.notificationsService.createMany(
+        filtered.map((u) => ({
+          tenantId: payload.tenantId,
+          userId: u.id,
+          type: NotificationType.VOUCHER_COMMENT_ADDED,
+          title: 'New Comment',
+          message: inAppMessage,
+          referenceId: payload.voucherId,
+          referenceType: 'VOUCHER',
+        })),
+      );
+
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: payload.tenantId },
+        select: { name: true },
+      });
+      const companyName = tenant?.name || 'Accounting SaaS';
+
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: filtered.map((u) => u.id) }, status: 'ACTIVE' },
+        select: { email: true, firstName: true },
+      });
+
+      await Promise.all(
+        users.map((u) =>
+          this.mailService.sendCommentAddedNotification({
+            email: u.email,
+            firstName: u.firstName,
+            companyName,
+            voucherNumber: payload.voucherNumber,
+            commentBody: payload.commentBody,
+            actorName: payload.actorName,
+          }),
+        ),
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to handle voucher comment added: ${error}`,
       );
     }
   }

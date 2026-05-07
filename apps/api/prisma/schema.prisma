@@ -87,6 +87,8 @@ enum NotificationType {
   VOUCHER_APPROVED
   VOUCHER_REJECTED
   VOUCHER_REVERSED
+  INVOICE_PAID
+  VOUCHER_COMMENT_ADDED
 }
 
 enum InvitationStatus {

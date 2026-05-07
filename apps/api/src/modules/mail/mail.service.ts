@@ -329,6 +329,72 @@ export class MailService {
     });
   }
 
+  async sendInvoicePaidNotification(params: {
+    email: string;
+    firstName: string;
+    companyName: string;
+    voucherNumber: string;
+    paymentVoucherNumber: string;
+    amount: string;
+    paymentDate: string;
+    contactName: string;
+    actorName: string;
+    isAR: boolean;
+  }): Promise<DeliveryResult> {
+    const reportUrl = `${this.appUrl}/dashboard/reports?report=${params.isAR ? 'ar-report' : 'ap-report'}`;
+    const subject = params.isAR
+      ? `Payment received against ${params.voucherNumber}`
+      : `Payment sent against ${params.voucherNumber}`;
+    const action = params.isAR ? 'Payment Received' : 'Payment Sent';
+    const message = params.isAR
+      ? `${params.actorName} marked invoice ${params.voucherNumber} as paid. ${params.contactName} settled the outstanding amount.`
+      : `${params.actorName} marked bill ${params.voucherNumber} as paid to ${params.contactName}.`;
+    return this.dispatch({
+      to: params.email,
+      subject,
+      template: 'invoice-paid',
+      context: {
+        firstName: params.firstName,
+        companyName: params.companyName,
+        voucherNumber: params.voucherNumber,
+        paymentVoucherNumber: params.paymentVoucherNumber,
+        amount: params.amount,
+        paymentDate: params.paymentDate,
+        contactName: params.contactName,
+        actorName: params.actorName,
+        action,
+        message,
+        reportUrl,
+        isAR: params.isAR,
+      },
+    });
+  }
+
+  async sendCommentAddedNotification(params: {
+    email: string;
+    firstName: string;
+    companyName: string;
+    voucherNumber: string;
+    commentBody: string;
+    actorName: string;
+  }): Promise<DeliveryResult> {
+    const reportUrl = `${this.appUrl}/dashboard/reports`;
+    const subject = `New comment on ${params.voucherNumber}`;
+    return this.dispatch({
+      to: params.email,
+      subject,
+      template: 'voucher-comment-added',
+      context: {
+        firstName: params.firstName,
+        companyName: params.companyName,
+        voucherNumber: params.voucherNumber,
+        commentBody: params.commentBody,
+        actorName: params.actorName,
+        reportUrl,
+      },
+    });
+  }
+
   /**
    * Send a calendar invitation. Tries Graph (creates an Outlook calendar event
    * with attendees, which Graph dispatches as a real calendar invite) and on
