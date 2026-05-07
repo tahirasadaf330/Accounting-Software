@@ -1,4 +1,4 @@
-import { IsOptional, IsDateString, IsUUID, IsBoolean, IsBooleanString } from 'class-validator';
+import { IsOptional, IsDateString, IsUUID, IsBoolean } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 
@@ -30,7 +30,7 @@ export class ARAPReportQueryDto {
     default: true,
   })
   @IsOptional()
-  @IsBooleanString()
   @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
   includeNettingAdjustments?: boolean;
 }
