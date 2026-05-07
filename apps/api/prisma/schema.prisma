@@ -712,6 +712,7 @@ model Contact {
   paymentTermDays         Int?        @db.SmallInt
   billingStartDate        DateTime?   @db.Date
   currencyCode            String      @default("USD") @db.VarChar(3)
+  bankBeneficiaryName     String?     @db.VarChar(255)
   bankName                String?     @db.VarChar(255)
   bankAccountNumber       String?     @db.VarChar(100)
   bankIban                String?     @db.VarChar(50)

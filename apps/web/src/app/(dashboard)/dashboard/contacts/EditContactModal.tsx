@@ -97,6 +97,7 @@ interface Contact {
   minThreshold: string | null;
   paymentTermDays: number | null;
   currencyCode: string;
+  bankBeneficiaryName: string | null;
   bankName: string | null;
   bankAccountNumber: string | null;
   bankIban: string | null;
@@ -150,6 +151,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
   const [amApprovalRequired, setAmApprovalRequired] = useState(false);
   const [billingStartDate, setBillingStartDate] = useState('');
   const [currencyCode, setCurrencyCode] = useState('USD');
+  const [bankBeneficiaryName, setBankBeneficiaryName] = useState('');
   const [bankName, setBankName] = useState('');
   const [bankAccountNumber, setBankAccountNumber] = useState('');
   const [bankIban, setBankIban] = useState('');
@@ -202,6 +204,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
       setAmApprovalRequired(contact.amApprovalRequired ?? false);
       setBillingStartDate((contact as any).billingStartDate || '');
       setCurrencyCode(contact.currencyCode || 'USD');
+      setBankBeneficiaryName(contact.bankBeneficiaryName || '');
       setBankName(contact.bankName || '');
       setBankAccountNumber(contact.bankAccountNumber || '');
       setBankIban(contact.bankIban || '');
@@ -278,6 +281,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
         isActive,
         billingStartDate: billingStartDate || null,
         currencyCode: currencyCode || 'USD',
+        bankBeneficiaryName: bankBeneficiaryName.trim() || null,
         bankName: bankName.trim() || null,
         bankAccountNumber: bankAccountNumber.trim() || null,
         bankIban: bankIban.trim() || null,
@@ -599,6 +603,18 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
               {/* Bank Details */}
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
                 <p className="text-sm font-medium text-gray-700">Bank Details</p>
+
+                <div>
+                  <label htmlFor="edit-bankBeneficiaryName" className="mb-1 block text-xs font-medium text-gray-600">Beneficiary Name</label>
+                  <input
+                    id="edit-bankBeneficiaryName"
+                    type="text"
+                    value={bankBeneficiaryName}
+                    onChange={(e) => setBankBeneficiaryName(e.target.value)}
+                    placeholder="Account holder name"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  />
+                </div>
 
                 <div>
                   <label htmlFor="edit-bankName" className="mb-1 block text-xs font-medium text-gray-600">Bank Name</label>

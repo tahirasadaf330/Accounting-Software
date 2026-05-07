@@ -104,6 +104,12 @@ export class CreateContactDto {
   @MaxLength(3)
   currencyCode?: string;
 
+  @ApiPropertyOptional({ example: 'Acme Corp', description: 'Beneficiary name (account holder)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  bankBeneficiaryName?: string;
+
   @ApiPropertyOptional({ example: 'Chase Bank', description: 'Bank name' })
   @IsOptional()
   @IsString()
