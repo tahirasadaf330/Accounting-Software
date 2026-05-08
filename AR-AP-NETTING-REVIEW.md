@@ -1,177 +1,119 @@
-# AR / AP Report — BOTH Contact Netting Logic
+# AR / AP Aging Report — Feature Overview
 
-**Feature:** Netting Cycle Integration into AR/AP Aging Reports  
 **Branch:** staging  
-**Author:** Development Team  
-**Date:** 2026-05-07
+**Last Updated:** 2026-05-08
 
 ---
 
-## Background
+## What Are These Reports?
 
-The system supports a contact type of **BOTH**, meaning a single contact can have both Sales invoices (money owed to us) and Purchase invoices (money we owe them). Before this change, the AR and AP aging reports treated such contacts independently — showing gross receivable in AR and gross payable in AP with no awareness of the offsetting relationship.
+The **Accounts Receivable (AR) Report** shows money that customers owe you.  
+The **Accounts Payable (AP) Report** shows money you owe to vendors.
 
-This document describes the business logic implemented to handle BOTH-type contacts correctly through the existing Netting Cycle workflow.
-
----
-
-## The Problem
-
-### Before the Fix
-
-| Report | What it showed |
-|--------|---------------|
-| AR Report | Full gross SALES outstanding (e.g. $2,000) |
-| AP Report | Full gross PURCHASE outstanding (e.g. $600) |
-
-The same BOTH contact appeared in **both** reports simultaneously, creating misleading exposure figures. The true net position ($1,400 receivable) was invisible unless you manually cross-referenced both reports.
+Both reports are point-in-time snapshots — you pick an "As of Date" and the report tells you exactly what was outstanding on that day.
 
 ---
 
-## The Solution
+## The Problem We Solved
 
-### Netting Cycle as the Source of Truth
+Some contacts are type **BOTH** — they are simultaneously a customer and a vendor. For example, Ibasis Tech buys from you ($800) but also sells to you ($3,500). Before this implementation, Ibasis Tech would appear in the AR report showing the full $3,500 owed, AND in the AP report showing the full $800 you owe them. Nobody could see the real picture: you're actually owed a net $2,700.
 
-The Netting Cycle module (already existing) is the formal approval workflow for offsetting AR and AP for a BOTH contact. The updated AR/AP reports now read netting cycle status and reflect it accordingly.
+This feature fixes that by using the existing **Netting Cycle** workflow to calculate and display the true net position.
 
 ---
 
-## Business Logic: Treatment by Cycle Status
+## What Is a Netting Cycle?
 
-| Netting Cycle Status | AR / AP Report Behaviour |
+A netting cycle is a formal agreement created in the system that links a BOTH contact's sales invoices and purchase invoices together for offsetting. It goes through an approval workflow before it takes effect:
+
+| Stage | Meaning |
 |---|---|
-| **APPROVED / PARTIAL** | Constituent invoices are **excluded** from individual rows. One synthetic "Netting Settlement" row replaces them, showing the net amount. |
-| **SETTLED** | Invoices excluded. Hidden by default (shown as $0 if gross view is enabled). |
-| **OPEN / PENDING_AM / PENDING_CEO** | Invoices shown individually but **flagged** with an amber "Pending Netting" badge — netting proposed but not yet binding. |
-| **AM_REJECTED / CEO_REJECTED** | Invoices shown completely normally — netting was declined, treated as if the cycle never existed. |
+| Open / Pending AM / Pending CEO | Netting proposed — awaiting approval |
+| Approved / Partial | Netting is active — net position is calculated |
+| Settled | Everything is cleared |
+| Rejected | Netting was declined — invoices treated normally |
 
 ---
 
-## Net Position Calculation (per Approved Cycle)
+## How the Reports Now Work
 
-```
-Cycle Receivable   =  sum of outstanding SALES invoices inside the cycle
-                      (payments counted only up to the As-Of Date)
+### For contacts with an Approved netting cycle
 
-Cycle Payable      =  sum of outstanding PURCHASE invoices inside the cycle
-                      (payments counted only up to the As-Of Date)
+Instead of showing individual invoices, the report shows a single **"Netting Settlement"** row with the net amount. The contact appears in only one report — AR if they owe you money net, AP if you owe them net. They never appear in both reports at the same time.
 
-Carry Forward      =  outstanding invoices dated BEFORE the cycle period
-                      that are NOT explicitly in the cycle's invoice list
-                      → SALES invoices  = positive contribution
-                      → PURCHASE invoices = negative contribution
+You can click the row to expand it and see the individual invoices that make up the net figure.
 
-Cycle Net          =  Cycle Receivable − Cycle Payable
-Net Total          =  Cycle Net + Carry Forward
-```
+### For contacts with a Pending cycle (not yet approved)
 
-### Net Total Determines Which Report Gets the Row
+The report still shows a single row per cycle, but it shows the gross amount (not netted) and displays a badge showing the approval stage — "Pending AM Approval", "Pending CEO Approval", or "Open". Once approved, it automatically switches to the net view.
 
-| Net Total | Appears in | As |
-|---|---|---|
-| **Positive (> 0)** | AR Report only | Single "Netting Settlement" row |
-| **Negative (< 0)** | AP Report only | Single "Netting Settlement" row |
-| **≈ Zero (settled)** | Neither report | Hidden (or $0 row in gross view) |
+### For contacts with a Rejected cycle
 
-A BOTH contact **never appears in both reports simultaneously** once an approved cycle exists.
+All invoices appear individually, exactly as if the netting cycle never existed.
+
+### For regular contacts (no netting cycle)
+
+No change at all — the report works exactly as a standard aging report.
 
 ---
 
-## Aging of the Net Row
+## What You Can Do With the Report
 
-The synthetic settlement row is aged using the **cycle's due date** (`cycle.endDate + contact.paymentTermDays`), not any individual invoice date. This gives a single, clean overdue position for the whole netting settlement.
+### Filter by aging bucket
+Seven clickable cards at the top show outstanding amounts split by how many days overdue:
+**Current → 1–7 → 8–15 → 16–30 → 31–60 → 61–90 → 91+ Days**
 
----
+Click any card to filter the table to only show invoices in that range. Click again to clear.
 
-## Summary Section — Three Figures
+### Outstanding only toggle
+When on (default): only shows invoices that still have money owed. When off: shows everything including fully paid invoices — useful for auditing history.
 
-The report summary now exposes three figures when netting adjustments are active:
+### Netting-adjusted view toggle
+When on (default): BOTH contacts show their net position via settlement rows. When off: shows every invoice individually regardless of any netting — useful for reconciliation or audit.
 
-| Field | Description |
-|---|---|
-| **Gross Outstanding** | What the outstanding would be without any netting (all invoices raw) |
-| **Netting Offset** | Amount removed / offset by approved netting cycles |
-| **Net Outstanding** | True exposure = Gross Outstanding − Netting Offset + net settlement rows |
+### Mark individual invoices as paid
+Each invoice row has a Mark Paid button. On netting settlement rows, clicking Mark Paid will pay the first outstanding invoice inside the cycle. In the AP report, sales invoices are disabled (you can only pay them from the AR report, and vice versa).
 
----
+### Mark Paid All (per contact)
+The contact header has a "Mark Paid All" button that opens the payment modal for the first outstanding invoice for that contact. For BOTH contacts it finds the right invoice type automatically.
 
-## Gross View Toggle
+### Comments
+Each invoice row has a comments icon showing how many comments exist. Click to view or add comments.
 
-A **"Netting-adjusted view"** checkbox (default: ON) is available in the report filter bar.
+### SOA link
+Each invoice links to the full Statement of Account for that contact.
 
-| Toggle State | Behaviour |
-|---|---|
-| **ON (default)** | Approved cycles collapsed into single net rows. Accurate financial exposure. |
-| **OFF (gross view)** | All invoices shown individually, original pre-fix behaviour. Useful for audit/reconciliation. |
-
----
-
-## Carry Forward — Why It Matters
-
-When a netting cycle is created, the netting service automatically identifies **carry-forward invoices**: outstanding invoices for that contact dated *before* the cycle's start date that were not explicitly added to the cycle. These are factored into the cycle's net total.
-
-In the AR/AP reports, these carry-forward invoices are also **excluded from individual rows** to avoid double-counting — their outstanding amount is already embedded inside the cycle's net settlement row.
+### Print / Export PDF
+Available at the top of the generated report.
 
 ---
 
-## Worked Example
+## UI Enhancements
 
-**Contact:** ABC Trading (type: BOTH)
+### 3-Level Collapsible Table
 
-| Invoice | Type | Amount | Status |
-|---|---|---|---|
-| INV-001 | SALES | $1,000 | Outstanding |
-| INV-002 | SALES | $1,000 | Outstanding |
-| PO-001 | PURCHASE | $600 | Outstanding |
+The report table is organised into three expandable levels so you can drill down only as far as you need:
 
-All three linked in an **APPROVED** netting cycle.
+**Level 1 — Contact** (always visible)
+Shows the contact name, their type badge (Customer / Vendor / BOTH), total outstanding across all their invoices, and a Mark Paid All button.
 
-```
-Cycle Receivable = $1,000 + $1,000 = $2,000
-Cycle Payable    = $600
-Cycle Net        = $2,000 − $600 = $1,400  →  Receivable
-Carry Forward    = $0 (no pre-cycle invoices)
-Net Total        = $1,400
-```
+**Level 2 — Invoices / Netting Settlements** (expand the contact to see)
+Shows each invoice or, for BOTH contacts with a netting cycle, a single Netting Settlement row showing the net amount, the cycle status badge, and an aging badge.
 
-### AR Report Result
+**Level 3 — Constituent Invoices** (expand a Netting Settlement row to see)
+Shows the individual invoices that make up the netting settlement, each with their own amounts, aging, and Mark Paid button.
 
-| Contact | Invoice # | Outstanding | Aging | Note |
-|---|---|---|---|---|
-| ABC Trading | NETTING-XXXXXXXX | $1,400 | (based on cycle due date) | NET badge — Netting Settlement |
+### Expand All / Collapse All
 
-### AP Report Result
-
-*(ABC Trading does not appear — net position is Receivable)*
-
-### Summary
-
-| | Amount |
-|---|---|
-| Gross Outstanding | $2,000 |
-| Netting Offset | −$600 |
-| **Net Outstanding** | **$1,400** |
+At the top right of the table there is an **Expand All** button that opens every contact group at once — useful when you want to scan all invoices across all contacts without clicking each one individually. **Collapse All** folds everything back. When an aging filter card is active, Expand All only expands the contacts visible in the current filter.
 
 ---
 
-## Edge Cases Handled
+## Summary Cards
 
-| Scenario | Handling |
-|---|---|
-| BOTH contact with some invoices in a cycle AND some standalone | Standalone invoices shown normally; only cycle-linked invoices are excluded/netted |
-| Multiple approved cycles for same contact | Each cycle produces one synthetic row with its own due date and aging bucket |
-| Rejected cycle (AM_REJECTED / CEO_REJECTED) | All invoices revert to normal rows, no flag, as if cycle never existed |
-| Contact with no netting cycles | No change — report behaves exactly as before |
-| `includeNettingAdjustments=false` (gross view) | All invoices shown individually, original behaviour restored |
-
----
-
-## Files Modified
-
-| File | Change |
-|---|---|
-| `packages/shared/src/types/report.ts` | Added `nettingCycleId`, `nettingCycleStatus`, `isNettingSettlement` to `ARAPRow`; added `grossOutstanding`, `nettingAdjustment` to summary; added `includeNettingAdjustments` to filters |
-| `apps/api/src/modules/reports/ar-report.service.ts` | Full netting-aware rewrite |
-| `apps/api/src/modules/reports/ap-report.service.ts` | Full netting-aware rewrite (symmetric with AR) |
-| `apps/api/src/modules/reports/dto/ar-ap-report-query.dto.ts` | Added `includeNettingAdjustments` query param |
-| `apps/web/src/app/(dashboard)/dashboard/reports/page.tsx` | Filter toggle, netting summary cards, settlement row UI, pending netting badges |
+The bottom of the report shows:
+- **Total Invoiced** — gross invoice value
+- **Total Paid** — total payments received/made
+- **Gross Outstanding** — what would be outstanding without any netting (shown when netting is active)
+- **Netting Offset** — amount offset by approved netting cycles
+- **Net Outstanding** — the true current exposure after netting

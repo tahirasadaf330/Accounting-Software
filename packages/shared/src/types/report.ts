@@ -82,6 +82,8 @@ export interface ARAPRow {
   voucherNumber: string;
   contactId: string;
   contactName: string;
+  contactType?: 'CUSTOMER' | 'VENDOR' | 'BOTH' | null;
+  voucherType?: 'SALES' | 'PURCHASE' | null;
   date: string;
   dueDate: string | null;
   totalAmount: string;
@@ -96,6 +98,8 @@ export interface ARAPRow {
   nettingCycleId?: string | null;
   nettingCycleStatus?: string | null;
   isNettingSettlement?: boolean;
+  isInApprovedCycle?: boolean;
+  constituentRows?: ARAPRow[];
 }
 
 export interface ARAPAgingSummary {

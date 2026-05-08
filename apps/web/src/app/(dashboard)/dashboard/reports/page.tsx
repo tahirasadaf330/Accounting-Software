@@ -1,18 +1,16 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import {
   BarChart3,
   ChevronDown,
+  ChevronRight,
   Printer,
   Download,
   FileSpreadsheet,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
   FileText,
   MessageSquare,
   CheckCircle2,
@@ -209,6 +207,26 @@ const AGING_COLORS: Record<string, string> = {
   '91+': 'bg-red-100 ring-red-300 text-red-800',
 };
 
+const NEW_AGING_BUCKETS = [
+  { key: 'current', label: 'Current',    color: 'bg-green-50 ring-green-200 text-green-800',   activeColor: 'bg-green-200 ring-green-400 text-green-900' },
+  { key: '1-7',     label: '1–7 Days',   color: 'bg-yellow-50 ring-yellow-200 text-yellow-800', activeColor: 'bg-yellow-200 ring-yellow-400 text-yellow-900' },
+  { key: '8-15',    label: '8–15 Days',  color: 'bg-amber-50 ring-amber-200 text-amber-800',    activeColor: 'bg-amber-200 ring-amber-400 text-amber-900' },
+  { key: '16-30',   label: '16–30 Days', color: 'bg-orange-50 ring-orange-200 text-orange-800', activeColor: 'bg-orange-200 ring-orange-400 text-orange-900' },
+  { key: '31-60',   label: '31–60 Days', color: 'bg-red-50 ring-red-200 text-red-800',          activeColor: 'bg-red-200 ring-red-400 text-red-900' },
+  { key: '61-90',   label: '61–90 Days', color: 'bg-red-100 ring-red-300 text-red-800',         activeColor: 'bg-red-300 ring-red-500 text-red-900' },
+  { key: '91+',     label: '91+ Days',   color: 'bg-red-200 ring-red-400 text-red-900',         activeColor: 'bg-red-400 ring-red-600 text-white' },
+] as const;
+
+function getNewBucket(daysOverdue: number): string {
+  if (daysOverdue <= 0) return 'current';
+  if (daysOverdue <= 7) return '1-7';
+  if (daysOverdue <= 15) return '8-15';
+  if (daysOverdue <= 30) return '16-30';
+  if (daysOverdue <= 60) return '31-60';
+  if (daysOverdue <= 90) return '61-90';
+  return '91+';
+}
+
 const AGING_BADGE: Record<string, string> = {
   current: 'bg-green-100 text-green-700',
   '1-30': 'bg-yellow-100 text-yellow-700',
@@ -217,85 +235,22 @@ const AGING_BADGE: Record<string, string> = {
   '91+': 'bg-red-200 text-red-800',
 };
 
-type SortKey =
-  | 'contactName'
-  | 'voucherNumber'
-  | 'date'
-  | 'dueDate'
-  | 'totalAmount'
-  | 'paidAmount'
-  | 'outstandingAmount'
-  | 'agingBucket'
-  | 'markedPaid';
+const PENDING_NETTING_STATUSES = new Set(['OPEN', 'PENDING_AM', 'PENDING_CEO']);
 
-const AGING_ORDER: Record<string, number> = {
-  current: 0,
-  '1-30': 1,
-  '31-60': 2,
-  '61-90': 3,
-  '91+': 4,
+const CYCLE_STATUS_LABELS: Record<string, string> = {
+  OPEN:        'Open',
+  PENDING_AM:  'Pending AM Approval',
+  PENDING_CEO: 'Pending CEO Approval',
+  APPROVED:    'Approved',
+  PARTIAL:     'Partial',
+  SETTLED:     'Settled',
 };
 
-function compareValues(a: any, b: any, key: SortKey): number {
-  const va = a[key];
-  const vb = b[key];
-
-  if (key === 'totalAmount' || key === 'paidAmount' || key === 'outstandingAmount') {
-    return Number(va) - Number(vb);
-  }
-  if (key === 'agingBucket') {
-    return (AGING_ORDER[va] ?? 0) - (AGING_ORDER[vb] ?? 0);
-  }
-  if (key === 'markedPaid') {
-    return (va ? 1 : 0) - (vb ? 1 : 0);
-  }
-  const sa = String(va ?? '');
-  const sb = String(vb ?? '');
-  return sa.localeCompare(sb);
-}
-
-function SortHeader({
-  label,
-  sortKey,
-  active,
-  direction,
-  onSort,
-  align = 'left',
-}: {
-  label: string;
-  sortKey: SortKey;
-  active: SortKey | null;
-  direction: 'asc' | 'desc';
-  onSort: (k: SortKey) => void;
-  align?: 'left' | 'right' | 'center';
-}) {
-  const isActive = active === sortKey;
-  return (
-    <th
-      className={cn(
-        'px-4 py-3 text-xs font-medium uppercase text-gray-500',
-        align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left',
-      )}
-    >
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className={cn(
-          'inline-flex items-center gap-1 hover:text-gray-900',
-          align === 'right' && 'flex-row-reverse',
-          isActive && 'text-gray-900',
-        )}
-      >
-        {label}
-        {!isActive && <ArrowUpDown className="h-3 w-3 opacity-40" />}
-        {isActive && direction === 'asc' && <ArrowUp className="h-3 w-3" />}
-        {isActive && direction === 'desc' && <ArrowDown className="h-3 w-3" />}
-      </button>
-    </th>
-  );
-}
-
-const PENDING_NETTING_STATUSES = new Set(['OPEN', 'PENDING_AM', 'PENDING_CEO']);
+const CONTACT_TYPE_BADGE: Record<string, { label: string; cls: string }> = {
+  BOTH:     { label: 'BOTH',     cls: 'bg-purple-100 text-purple-700' },
+  CUSTOMER: { label: 'Customer', cls: 'bg-green-100 text-green-700'   },
+  VENDOR:   { label: 'Vendor',   cls: 'bg-blue-100 text-blue-700'     },
+};
 
 function ARAPReportView({
   data,
@@ -311,28 +266,113 @@ function ARAPReportView({
   const contactLabel = isAR ? 'Customer' : 'Vendor';
   const hasNettingAdjustment = Number(data.summary?.nettingAdjustment) > 0;
 
-  const [sortKey, setSortKey] = useState<SortKey | null>(null);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-
+  const [expandedContacts, setExpandedContacts] = useState<Set<string>>(new Set());
+  const [expandedCycles, setExpandedCycles] = useState<Set<string>>(new Set());
   const [contactModalId, setContactModalId] = useState<string | null>(null);
   const [commentsVoucher, setCommentsVoucher] = useState<{ id: string; number: string } | null>(null);
   const [markPaidVoucher, setMarkPaidVoucher] = useState<{ id: string; number: string; alreadyPaid: boolean } | null>(null);
+  const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
 
-  const handleSort = (k: SortKey) => {
-    if (sortKey === k) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(k);
-      setSortDir('asc');
+  const groupedContacts = useMemo(() => {
+    const rows: any[] = data.rows ?? [];
+    const map = new Map<string, any>();
+    for (const row of rows) {
+      const key = row.contactId || row.contactName;
+      if (!map.has(key)) {
+        map.set(key, {
+          contactId: row.contactId,
+          contactName: row.contactName,
+          contactType: row.contactType ?? 'CUSTOMER',
+          totalOutstanding: 0,
+          rows: [],
+        });
+      }
+      const group = map.get(key)!;
+      group.totalOutstanding += Number(row.outstandingAmount);
+      group.rows.push(row);
     }
+    return Array.from(map.values()).sort((a, b) => a.contactName.localeCompare(b.contactName));
+  }, [data.rows]);
+
+  const bucketTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const row of data.rows ?? []) {
+      const b = getNewBucket(Number(row.daysOverdue));
+      totals[b] = (totals[b] ?? 0) + Number(row.outstandingAmount);
+    }
+    return totals;
+  }, [data.rows]);
+
+  const filteredGroups = useMemo(() => {
+    if (!selectedBucket) return groupedContacts;
+    return groupedContacts
+      .map((group) => ({
+        ...group,
+        rows: group.rows.filter((r: any) => getNewBucket(Number(r.daysOverdue)) === selectedBucket),
+      }))
+      .filter((group) => group.rows.length > 0);
+  }, [groupedContacts, selectedBucket]);
+
+  const allContactIds = filteredGroups.map((g) => g.contactId);
+  const areAllExpanded = allContactIds.length > 0 && allContactIds.every((id) => expandedContacts.has(id));
+
+  const toggleContact = (contactId: string) => {
+    setExpandedContacts((prev) => {
+      const next = new Set(prev);
+      if (next.has(contactId)) next.delete(contactId);
+      else next.add(contactId);
+      return next;
+    });
   };
 
-  const sortedRows = useMemo(() => {
-    const rows = data.rows ?? [];
-    if (!sortKey) return rows;
-    const factor = sortDir === 'asc' ? 1 : -1;
-    return [...rows].sort((a, b) => compareValues(a, b, sortKey) * factor);
-  }, [data.rows, sortKey, sortDir]);
+  const toggleCycle = (voucherId: string) => {
+    setExpandedCycles((prev) => {
+      const next = new Set(prev);
+      if (next.has(voucherId)) next.delete(voucherId);
+      else next.add(voucherId);
+      return next;
+    });
+  };
+
+  const handleExpandAll = () => setExpandedContacts(new Set(filteredGroups.map((g) => g.contactId)));
+  const handleCollapseAll = () => { setExpandedContacts(new Set()); setExpandedCycles(new Set()); };
+
+  const getFirstPayable = (group: any): { id: string; number: string; alreadyPaid: boolean } | null => {
+    // For CUSTOMER/VENDOR: find first payable top-level row
+    const topLevel = group.rows.find((r: any) =>
+      Number(r.outstandingAmount) > 0 &&
+      !r.isNettingSettlement &&
+      !PENDING_NETTING_STATUSES.has(r.nettingCycleStatus),
+    );
+    if (topLevel) return { id: topLevel.voucherId, number: topLevel.voucherNumber, alreadyPaid: !!topLevel.markedPaid };
+
+    // For BOTH contacts: search constituent rows inside settlement rows.
+    // Only pick the correct voucher type to avoid wrong-account mark-paid (SALES for AR, PURCHASE for AP).
+    // No pending-status filter here — individual Mark Paid is allowed on these rows, so Mark Paid All should be too.
+    const expectedType = isAR ? 'SALES' : 'PURCHASE';
+    for (const row of group.rows) {
+      if (!Array.isArray(row.constituentRows)) continue;
+      for (const inv of row.constituentRows) {
+        if (
+          Number(inv.outstandingAmount) > 0 &&
+          !inv.markedPaid &&
+          inv.voucherType === expectedType
+        ) {
+          return { id: inv.voucherId, number: inv.voucherNumber, alreadyPaid: false };
+        }
+      }
+    }
+    return null;
+  };
+
+  // For a settlement row: find first payable constituent of the correct type for this report
+  const getSettlementPayable = (row: any) => {
+    const expectedType = isAR ? 'SALES' : 'PURCHASE';
+    const inv = (row.constituentRows ?? []).find((c: any) =>
+      Number(c.outstandingAmount) > 0 && !c.markedPaid && c.voucherType === expectedType,
+    );
+    return inv ? { id: inv.voucherId, number: inv.voucherNumber, alreadyPaid: false } : null;
+  };
 
   return (
     <div>
@@ -344,18 +384,37 @@ function ARAPReportView({
         <p className="mb-4 text-xs text-gray-400">Showing outstanding balances only</p>
       )}
 
-      {/* Aging summary cards */}
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        {(['current', '1-30', '31-60', '61-90', '91+'] as const).map((bucket) => {
-          const key = bucket === 'current' ? 'current' : bucket === '1-30' ? 'days1to30' : bucket === '31-60' ? 'days31to60' : bucket === '61-90' ? 'days61to90' : 'days91plus';
+      {/* Aging filter cards — click to filter the table by day range */}
+      <div className="mb-2 grid grid-cols-4 gap-2 sm:grid-cols-7">
+        {NEW_AGING_BUCKETS.map((b) => {
+          const amount = bucketTotals[b.key] ?? 0;
+          const isSelected = selectedBucket === b.key;
           return (
-            <div key={bucket} className={cn('rounded-lg p-3 ring-1', AGING_COLORS[bucket])}>
-              <p className="text-xs font-semibold uppercase">{AGING_LABELS[bucket]}</p>
-              <p className="mt-1 text-base font-bold">{formatAmount(data.summary.aging[key])}</p>
-            </div>
+            <button
+              key={b.key}
+              type="button"
+              onClick={() => setSelectedBucket(isSelected ? null : b.key)}
+              title={isSelected ? 'Click to clear filter' : `Click to filter by ${b.label}`}
+              className={cn(
+                'rounded-lg p-3 ring-1 text-left transition-colors',
+                isSelected ? b.activeColor : b.color,
+                'hover:opacity-80',
+              )}
+            >
+              <p className="text-xs font-semibold uppercase">{b.label}</p>
+              <p className="mt-1 text-base font-bold">{formatAmount(amount)}</p>
+              {isSelected && <p className="mt-0.5 text-[10px] opacity-75">Active filter ✕</p>}
+            </button>
           );
         })}
       </div>
+      {selectedBucket && (
+        <p className="mb-4 text-xs text-primary-600">
+          Showing {filteredGroups.length} {contactLabel.toLowerCase()}{filteredGroups.length !== 1 ? 's' : ''} with invoices overdue {selectedBucket === 'current' ? '(not overdue)' : selectedBucket === '91+' ? '91+ days' : `${selectedBucket} days`}
+          {' — '}
+          <button type="button" className="underline" onClick={() => setSelectedBucket(null)}>Clear filter</button>
+        </p>
+      )}
 
       {/* Summary totals */}
       <div className={cn('mb-6 grid gap-4', hasNettingAdjustment ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3')}>
@@ -389,161 +448,319 @@ function ARAPReportView({
         </div>
       </div>
 
-      {/* Detail table */}
+      {/* Expand / collapse all */}
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-sm text-gray-500">
+          {filteredGroups.length}{selectedBucket ? ` of ${groupedContacts.length}` : ''} {contactLabel}{filteredGroups.length !== 1 ? 's' : ''}
+        </p>
+        {filteredGroups.length > 0 && (
+          <button
+            type="button"
+            onClick={areAllExpanded ? handleCollapseAll : handleExpandAll}
+            className="text-xs font-medium text-primary-600 hover:text-primary-800"
+          >
+            {areAllExpanded ? 'Collapse All' : 'Expand All'}
+          </button>
+        )}
+      </div>
+
+      {/* Grouped table */}
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <SortHeader label={contactLabel} sortKey="contactName" active={sortKey} direction={sortDir} onSort={handleSort} />
-              <SortHeader label="Invoice #" sortKey="voucherNumber" active={sortKey} direction={sortDir} onSort={handleSort} />
-              <SortHeader label="Date" sortKey="date" active={sortKey} direction={sortDir} onSort={handleSort} />
-              <SortHeader label="Due Date" sortKey="dueDate" active={sortKey} direction={sortDir} onSort={handleSort} />
-              <SortHeader label="Invoice Amt" sortKey="totalAmount" active={sortKey} direction={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="Paid" sortKey="paidAmount" active={sortKey} direction={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="Outstanding" sortKey="outstandingAmount" active={sortKey} direction={sortDir} onSort={handleSort} align="right" />
-              <SortHeader label="Aging" sortKey="agingBucket" active={sortKey} direction={sortDir} onSort={handleSort} />
-              <th className="px-3 py-3 text-center text-xs font-medium uppercase text-gray-500" title="Statement of Account">SOA</th>
-              <th className="px-3 py-3 text-center text-xs font-medium uppercase text-gray-500" title="Comments">Comments</th>
-              <SortHeader label="Mark Paid" sortKey="markedPaid" active={sortKey} direction={sortDir} onSort={handleSort} align="center" />
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">{contactLabel} / Invoice</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Due Date</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Invoice Amt</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Paid</th>
+              <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Outstanding</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Aging</th>
+              <th className="px-3 py-3 text-center text-xs font-medium uppercase text-gray-500">SOA</th>
+              <th className="px-3 py-3 text-center text-xs font-medium uppercase text-gray-500">Comments</th>
+              <th className="px-3 py-3 text-center text-xs font-medium uppercase text-gray-500">Mark Paid</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {sortedRows.length === 0 && (
+            {filteredGroups.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-6 text-center text-sm text-gray-400">
-                  No records found for the selected filters.
+                <td colSpan={10} className="px-4 py-6 text-center text-sm text-gray-400">
+                  {selectedBucket ? `No records in the ${selectedBucket === 'current' ? 'current (not overdue)' : selectedBucket + ' day'} bucket.` : 'No records found for the selected filters.'}
                 </td>
               </tr>
             )}
-            {sortedRows.map((row: any, i: number) => {
-              const isSettlement = row.isNettingSettlement === true;
-              const isPendingNetting = !isSettlement && row.nettingCycleId && PENDING_NETTING_STATUSES.has(row.nettingCycleStatus);
+            {filteredGroups.map((group) => {
+              const isExpanded = expandedContacts.has(group.contactId);
+              const firstPayable = getFirstPayable(group);
 
               return (
-                <tr
-                  key={i}
-                  className={cn(
-                    isSettlement ? 'bg-purple-50 hover:bg-purple-100' : 'hover:bg-gray-50',
-                  )}
-                >
-                  <td className="px-4 py-2 font-medium">
-                    {isSettlement ? (
-                      <span className="text-purple-700">{row.contactName}</span>
-                    ) : row.contactId ? (
-                      <button
-                        type="button"
-                        onClick={() => setContactModalId(row.contactId)}
-                        className="text-primary-700 hover:underline"
-                      >
-                        {row.contactName}
-                      </button>
-                    ) : (
-                      <span className="text-gray-900">{row.contactName}</span>
-                    )}
-                    {!isSettlement && row.bankAccountLast4 && (
-                      <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600">
-                        ····{row.bankAccountLast4}
-                      </span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2 font-mono">
-                    {isSettlement ? (
-                      <span className="flex items-center gap-1.5">
-                        <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-semibold text-purple-700">NET</span>
-                        <span className="text-purple-700">Netting Settlement</span>
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1.5">
-                        <Link
-                          href={`/dashboard/vouchers/${row.voucherId}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-primary-700 hover:underline"
+                <Fragment key={group.contactId}>
+                  {/* Level 1 — Contact header */}
+                  <tr className="border-t-2 border-gray-200 bg-gray-100">
+                    <td colSpan={10} className="px-4 py-2.5">
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => toggleContact(group.contactId)}
+                          className="flex items-center gap-2 font-semibold text-gray-900 hover:text-primary-700"
                         >
-                          {row.voucherNumber}
-                          <ExternalLink className="h-3 w-3 opacity-60" />
-                        </Link>
-                        {isPendingNetting && (
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
-                            Pending Netting
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.date}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.dueDate ?? '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-right text-gray-900">{formatAmount(row.totalAmount)}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-right text-blue-700">{formatAmount(row.paidAmount)}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-right font-semibold">
-                    <span className={Number(row.outstandingAmount) > 0 ? 'text-red-700' : 'text-green-600'}>
-                      {formatAmount(row.outstandingAmount)}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2">
-                    <span className={cn('rounded px-2 py-0.5 text-xs font-medium', AGING_BADGE[row.agingBucket])}>
-                      {AGING_LABELS[row.agingBucket]}
-                      {row.daysOverdue > 0 && <span className="ml-1 opacity-75">({row.daysOverdue}d)</span>}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-center">
-                    {!isSettlement && row.contactId ? (
-                      <Link
-                        href={`/dashboard/contacts/${row.contactId}/statement`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex rounded-lg p-1.5 text-gray-500 hover:bg-primary-50 hover:text-primary-700"
-                        title="View Statement of Account"
-                      >
-                        <FileText className="h-4 w-4" />
-                      </Link>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-center">
-                    {!isSettlement ? (
-                      <button
-                        type="button"
-                        onClick={() => setCommentsVoucher({ id: row.voucherId, number: row.voucherNumber })}
-                        className="relative inline-flex rounded-lg p-1.5 text-gray-500 hover:bg-primary-50 hover:text-primary-700"
-                        title="View / add comments"
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                        {row.commentCount > 0 && (
-                          <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-semibold leading-none text-white">
-                            {row.commentCount}
-                          </span>
-                        )}
-                      </button>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-center">
-                    {!isSettlement ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMarkPaidVoucher({
-                            id: row.voucherId,
-                            number: row.voucherNumber,
-                            alreadyPaid: !!row.markedPaid,
-                          })
-                        }
-                        className={cn(
-                          'inline-flex rounded-lg p-1.5 hover:bg-green-50',
-                          row.markedPaid ? 'text-green-600' : 'text-gray-400 hover:text-green-700',
-                        )}
-                        title={row.markedPaid ? 'Fully paid' : 'Mark as paid'}
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <span className="text-gray-300">—</span>
-                    )}
-                  </td>
-                </tr>
+                          {isExpanded
+                            ? <ChevronDown className="h-4 w-4 text-gray-500" />
+                            : <ChevronRight className="h-4 w-4 text-gray-500" />}
+                          {group.contactName}
+                          {CONTACT_TYPE_BADGE[group.contactType] && (
+                            <span className={cn('rounded px-1.5 py-0.5 text-xs font-medium', CONTACT_TYPE_BADGE[group.contactType].cls)}>
+                              {CONTACT_TYPE_BADGE[group.contactType].label}
+                            </span>
+                          )}
+                        </button>
+                        <span className={cn('text-sm font-semibold', Number(group.totalOutstanding) > 0 ? 'text-red-700' : 'text-green-600')}>
+                          {formatAmount(group.totalOutstanding)}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Level 2 — detail rows */}
+                  {isExpanded && group.rows.map((row: any, rowIdx: number) => {
+                    const isSettlement = row.isNettingSettlement === true;
+                    const isPendingCycle = isSettlement && PENDING_NETTING_STATUSES.has(row.nettingCycleStatus);
+                    const isPendingNetting = !isSettlement && row.nettingCycleId && PENDING_NETTING_STATUSES.has(row.nettingCycleStatus);
+                    const isCycleExpanded = isSettlement && expandedCycles.has(row.voucherId);
+                    const hasConstituents = isSettlement && Array.isArray(row.constituentRows) && row.constituentRows.length > 0;
+                    const settlementPayable = isSettlement ? getSettlementPayable(row) : null;
+
+                    return (
+                      <Fragment key={`row-${row.voucherId}-${rowIdx}`}>
+                        <tr className={cn(isSettlement ? 'bg-purple-50 hover:bg-purple-100' : 'bg-white hover:bg-gray-50')}>
+                          {/* Identifier column */}
+                          <td className="px-4 py-2">
+                            <div className={cn('flex items-center gap-1.5', isSettlement ? 'pl-6' : 'pl-6')}>
+                              {isSettlement ? (
+                                <>
+                                  {hasConstituents ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleCycle(row.voucherId)}
+                                      className="shrink-0 text-purple-500 hover:text-purple-800"
+                                    >
+                                      {isCycleExpanded
+                                        ? <ChevronDown className="h-3.5 w-3.5" />
+                                        : <ChevronRight className="h-3.5 w-3.5" />}
+                                    </button>
+                                  ) : (
+                                    <span className="w-3.5 shrink-0" />
+                                  )}
+                                  <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-semibold text-purple-700">NET</span>
+                                  <span className="font-medium text-purple-700">Netting Settlement</span>
+                                  {isPendingCycle && (
+                                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">
+                                      {CYCLE_STATUS_LABELS[row.nettingCycleStatus] ?? row.nettingCycleStatus}
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <Link
+                                    href={`/dashboard/vouchers/${row.voucherId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-primary-700 hover:underline"
+                                  >
+                                    {row.voucherNumber}
+                                    <ExternalLink className="h-3 w-3 opacity-60" />
+                                  </Link>
+                                  {isPendingNetting && (
+                                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">Pending Netting</span>
+                                  )}
+                                  {row.bankAccountLast4 && (
+                                    <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600">····{row.bankAccountLast4}</span>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.date}</td>
+                          <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.dueDate ?? '—'}</td>
+                          <td className="whitespace-nowrap px-4 py-2 text-right text-gray-900">{formatAmount(row.totalAmount)}</td>
+                          <td className="whitespace-nowrap px-4 py-2 text-right text-blue-700">{formatAmount(row.paidAmount)}</td>
+                          <td className="whitespace-nowrap px-4 py-2 text-right font-semibold">
+                            <span className={Number(row.outstandingAmount) > 0 ? 'text-red-700' : 'text-green-600'}>
+                              {formatAmount(row.outstandingAmount)}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2">
+                            <span className={cn('rounded px-2 py-0.5 text-xs font-medium', AGING_BADGE[row.agingBucket])}>
+                              {AGING_LABELS[row.agingBucket]}
+                              {row.daysOverdue > 0 && <span className="ml-1 opacity-75">({row.daysOverdue}d)</span>}
+                            </span>
+                          </td>
+                          {/* SOA */}
+                          <td className="whitespace-nowrap px-3 py-2 text-center">
+                            {!isSettlement && row.contactId ? (
+                              <Link href={`/dashboard/contacts/${row.contactId}/statement`} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex rounded-lg p-1.5 text-gray-500 hover:bg-primary-50 hover:text-primary-700"
+                                title="View Statement of Account"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </Link>
+                            ) : <span className="text-gray-300">—</span>}
+                          </td>
+                          {/* Comments */}
+                          <td className="whitespace-nowrap px-3 py-2 text-center">
+                            {!isSettlement ? (
+                              <button type="button"
+                                onClick={() => setCommentsVoucher({ id: row.voucherId, number: row.voucherNumber })}
+                                className="relative inline-flex rounded-lg p-1.5 text-gray-500 hover:bg-primary-50 hover:text-primary-700"
+                                title="View / add comments"
+                              >
+                                <MessageSquare className="h-4 w-4" />
+                                {row.commentCount > 0 && (
+                                  <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary-600 px-1 text-[10px] font-semibold leading-none text-white">
+                                    {row.commentCount}
+                                  </span>
+                                )}
+                              </button>
+                            ) : <span className="text-gray-300">—</span>}
+                          </td>
+                          {/* Mark Paid */}
+                          <td className="whitespace-nowrap px-3 py-2 text-center">
+                            {isSettlement ? (
+                              settlementPayable ? (
+                                <button type="button"
+                                  onClick={() => setMarkPaidVoucher(settlementPayable)}
+                                  className="inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-700"
+                                  title="Mark first outstanding invoice in this cycle as paid"
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                </button>
+                              ) : (
+                                <button type="button" disabled title="All invoices in this cycle are fully paid"
+                                  className="inline-flex cursor-not-allowed rounded-lg p-1.5 text-green-500"
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                </button>
+                              )
+                            ) : (
+                              <button type="button"
+                                onClick={() => setMarkPaidVoucher({ id: row.voucherId, number: row.voucherNumber, alreadyPaid: !!row.markedPaid })}
+                                className={cn('inline-flex rounded-lg p-1.5 hover:bg-green-50', row.markedPaid ? 'text-green-600' : 'text-gray-400 hover:text-green-700')}
+                                title={row.markedPaid ? 'Fully paid' : 'Mark as paid'}
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+
+                        {/* Level 3 — constituent invoice rows */}
+                        {isCycleExpanded && row.constituentRows?.map((inv: any, invIdx: number) => (
+                          <tr key={`inv-${inv.voucherId}-${invIdx}`} className="bg-purple-50/50 hover:bg-purple-50">
+                            <td className="px-4 py-1.5">
+                              <div className="flex items-center gap-1.5 pl-14">
+                                <Link href={`/dashboard/vouchers/${inv.voucherId}`} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 font-mono text-xs text-primary-700 hover:underline"
+                                >
+                                  {inv.voucherNumber}
+                                  <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                                </Link>
+                                {inv.voucherType === 'SALES'
+                                  ? <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700">SALES</span>
+                                  : <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">PURCHASE</span>}
+                                <span className="rounded bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-600">In Cycle</span>
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-1.5 text-xs text-gray-500">{inv.date}</td>
+                            <td className="whitespace-nowrap px-4 py-1.5 text-xs text-gray-500">{inv.dueDate ?? '—'}</td>
+                            <td className="whitespace-nowrap px-4 py-1.5 text-right text-xs text-gray-900">{formatAmount(inv.totalAmount)}</td>
+                            <td className="whitespace-nowrap px-4 py-1.5 text-right text-xs text-blue-700">{formatAmount(inv.paidAmount)}</td>
+                            <td className="whitespace-nowrap px-4 py-1.5 text-right text-xs font-semibold">
+                              <span className={Number(inv.outstandingAmount) > 0 ? 'text-red-700' : 'text-green-600'}>
+                                {formatAmount(inv.outstandingAmount)}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-1.5">
+                              <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-medium', AGING_BADGE[inv.agingBucket])}>
+                                {AGING_LABELS[inv.agingBucket]}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-center">
+                              {inv.contactId ? (
+                                <Link href={`/dashboard/contacts/${inv.contactId}/statement`} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex rounded-lg p-1 text-gray-400 hover:bg-primary-50 hover:text-primary-700"
+                                >
+                                  <FileText className="h-3.5 w-3.5" />
+                                </Link>
+                              ) : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-center">
+                              <button type="button"
+                                onClick={() => setCommentsVoucher({ id: inv.voucherId, number: inv.voucherNumber })}
+                                className="relative inline-flex rounded-lg p-1 text-gray-400 hover:bg-primary-50 hover:text-primary-700"
+                              >
+                                <MessageSquare className="h-3.5 w-3.5" />
+                                {inv.commentCount > 0 && (
+                                  <span className="absolute -top-1 -right-1 inline-flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-primary-600 px-1 text-[9px] font-semibold leading-none text-white">
+                                    {inv.commentCount}
+                                  </span>
+                                )}
+                              </button>
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 text-center">
+                              {(() => {
+                                const wrongType = isAR ? inv.voucherType === 'PURCHASE' : inv.voucherType === 'SALES';
+                                const wrongTypeTitle = isAR
+                                  ? 'This is a payable — mark paid from the AP report'
+                                  : 'This is a receivable — mark paid from the AR report';
+                                return wrongType ? (
+                                  <button type="button" disabled title={wrongTypeTitle}
+                                    className="inline-flex cursor-not-allowed rounded-lg p-1 text-gray-300"
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : (
+                                  <button type="button"
+                                    onClick={() => setMarkPaidVoucher({ id: inv.voucherId, number: inv.voucherNumber, alreadyPaid: !!inv.markedPaid })}
+                                    className={cn('inline-flex rounded-lg p-1 hover:bg-green-50', inv.markedPaid ? 'text-green-600' : 'text-gray-400 hover:text-green-700')}
+                                    title={inv.markedPaid ? 'Fully paid' : 'Mark as paid'}
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  </button>
+                                );
+                              })()}
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
+
+                  {/* Contact footer — visible when expanded */}
+                  {isExpanded && (
+                    <tr className="border-b-2 border-gray-200 bg-gray-50">
+                      <td colSpan={10} className="px-4 py-2">
+                        <div className="flex items-center justify-between pl-6">
+                          <span className="text-xs font-medium text-gray-500">Total — {group.contactName}</span>
+                          <div className="flex items-center gap-4">
+                            <span className={cn('text-sm font-semibold', Number(group.totalOutstanding) > 0 ? 'text-red-700' : 'text-green-600')}>
+                              {formatAmount(group.totalOutstanding)}
+                            </span>
+                            {firstPayable && (
+                              <button
+                                type="button"
+                                onClick={() => setMarkPaidVoucher(firstPayable)}
+                                className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                              >
+                                <CheckCircle2 className="h-3 w-3" />
+                                Mark Paid All
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -652,7 +869,7 @@ export default function ReportsPage() {
     loadContacts();
   }, []);
 
-  const generateReport = async () => {
+  const generateReport = async (arApOverride?: Partial<typeof arApFilters>) => {
     setLoading(true);
     setReportData(null);
     setError(null);
@@ -690,18 +907,20 @@ export default function ReportsPage() {
           break;
         }
         case 'ar-report': {
+          const f = { ...arApFilters, ...arApOverride };
           const params: Record<string, string> = { asOfDate: dateRange.toDate };
-          if (arApFilters.contactId) params.contactId = arApFilters.contactId;
-          params.showOutstandingOnly = String(arApFilters.showOutstandingOnly);
-          params.includeNettingAdjustments = String(arApFilters.includeNettingAdjustments);
+          if (f.contactId) params.contactId = f.contactId;
+          params.showOutstandingOnly = String(f.showOutstandingOnly);
+          params.includeNettingAdjustments = String(f.includeNettingAdjustments);
           data = await api.get('/reports/ar', params);
           break;
         }
         case 'ap-report': {
+          const f = { ...arApFilters, ...arApOverride };
           const params: Record<string, string> = { asOfDate: dateRange.toDate };
-          if (arApFilters.contactId) params.contactId = arApFilters.contactId;
-          params.showOutstandingOnly = String(arApFilters.showOutstandingOnly);
-          params.includeNettingAdjustments = String(arApFilters.includeNettingAdjustments);
+          if (f.contactId) params.contactId = f.contactId;
+          params.showOutstandingOnly = String(f.showOutstandingOnly);
+          params.includeNettingAdjustments = String(f.includeNettingAdjustments);
           data = await api.get('/reports/ap', params);
           break;
         }
@@ -838,7 +1057,11 @@ export default function ReportsPage() {
                 <input
                   type="checkbox"
                   checked={arApFilters.includeNettingAdjustments}
-                  onChange={(e) => setArApFilters((p) => ({ ...p, includeNettingAdjustments: e.target.checked }))}
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setArApFilters((p) => ({ ...p, includeNettingAdjustments: val }));
+                    if (reportData) generateReport({ includeNettingAdjustments: val });
+                  }}
                   className="h-4 w-4 rounded border-gray-300 text-primary-600"
                 />
                 Netting-adjusted view
@@ -871,7 +1094,7 @@ export default function ReportsPage() {
           />
         </div>
         <button
-          onClick={generateReport}
+          onClick={() => generateReport()}
           disabled={loading || (activeReport === 'statement-of-account' && !selectedAccountId)}
           className="rounded-lg bg-primary-600 px-6 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
         >

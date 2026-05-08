@@ -41,6 +41,16 @@ const ACTIVE_NETTING_STATUSES = [
   NettingCycleStatus.SETTLED,
 ];
 
+// Statuses that generate a synthetic collapsible row (constituent invoices are excluded from regular rows).
+// SETTLED is excluded — invoices drop off naturally once fully paid.
+const SYNTHETIC_ROW_STATUSES = new Set<NettingCycleStatus>([
+  NettingCycleStatus.OPEN,
+  NettingCycleStatus.PENDING_AM,
+  NettingCycleStatus.PENDING_CEO,
+  NettingCycleStatus.APPROVED,
+  NettingCycleStatus.PARTIAL,
+]);
+
 @Injectable()
 export class APReportService {
   constructor(private prisma: PrismaService) {}
@@ -64,7 +74,7 @@ export class APReportService {
     const vouchers = await this.prisma.voucher.findMany({
       where,
       include: {
-        contact: { select: { id: true, name: true, paymentTermDays: true, bankAccountNumber: true } },
+        contact: { select: { id: true, name: true, paymentTermDays: true, bankAccountNumber: true, type: true } },
         invoiceAllocations: {
           where: { paidAt: { lte: asOfDate } },
           select: { amount: true },
@@ -76,12 +86,12 @@ export class APReportService {
 
     // voucherId → { cycleId, cycleStatus } for flagging rows
     const voucherCycleMap = new Map<string, { cycleId: string; cycleStatus: string }>();
-    // vouchers in APPROVED/PARTIAL cycles are excluded from regular rows and replaced by synthetic rows
-    const approvedOrPartialVoucherIds = new Set<string>();
+    // vouchers in any non-rejected active cycle are excluded from regular rows and replaced by synthetic rows
+    const excludedVoucherIds = new Set<string>();
     // vouchers that are carry-forward contributors to an approved/partial cycle
     const carryForwardExcludedIds = new Set<string>();
-    // approved/partial cycle data for synthetic row generation
-    const approvedCycles: any[] = [];
+    // cycles that generate a synthetic collapsible row
+    const syntheticRowCycles: any[] = [];
 
     if (includeNettingAdjustments) {
       const nettingWhere: any = {
@@ -93,14 +103,20 @@ export class APReportService {
       const nettingCycles = await this.prisma.nettingCycle.findMany({
         where: nettingWhere,
         include: {
-          contact: { select: { id: true, name: true } },
+          contact: { select: { id: true, name: true, type: true, paymentTermDays: true } },
           invoices: {
             include: {
               voucher: {
                 select: {
                   id: true,
+                  voucherNumber: true,
                   voucherType: true,
                   totalAmount: true,
+                  date: true,
+                  status: true,
+                  reference: true,
+                  narration: true,
+                  _count: { select: { comments: true } },
                   invoiceAllocations: {
                     where: { paidAt: { lte: asOfDate } },
                     select: { amount: true },
@@ -113,27 +129,24 @@ export class APReportService {
       });
 
       for (const cycle of nettingCycles) {
-        const isApprovedOrPartial =
-          cycle.status === NettingCycleStatus.APPROVED ||
-          cycle.status === NettingCycleStatus.PARTIAL;
+        const hasSyntheticRow = SYNTHETIC_ROW_STATUSES.has(cycle.status as NettingCycleStatus);
 
         for (const inv of cycle.invoices) {
           voucherCycleMap.set(inv.voucherId, { cycleId: cycle.id, cycleStatus: cycle.status });
-          if (isApprovedOrPartial) {
-            approvedOrPartialVoucherIds.add(inv.voucherId);
+          if (hasSyntheticRow) {
+            excludedVoucherIds.add(inv.voucherId);
           }
         }
 
-        if (isApprovedOrPartial) {
-          approvedCycles.push(cycle);
+        if (hasSyntheticRow) {
+          syntheticRowCycles.push(cycle);
         }
       }
 
-      // Identify carry-forward vouchers for each approved/partial cycle.
-      // These are outstanding vouchers dated before the cycle period that are not
-      // explicitly in the cycle's invoice list — the netting service already embeds
-      // them in the cycle's net total, so they must not appear as individual rows.
-      for (const cycle of approvedCycles) {
+      // Carry-forward exclusion only applies to APPROVED/PARTIAL cycles — the netting service
+      // embeds those invoices in the cycle net total. Pending cycles haven't been approved yet.
+      for (const cycle of syntheticRowCycles) {
+        if (cycle.status !== NettingCycleStatus.APPROVED && cycle.status !== NettingCycleStatus.PARTIAL) continue;
         const linkedIds = cycle.invoices.map((i: any) => i.voucherId);
         const cfVouchers = await this.prisma.voucher.findMany({
           where: {
@@ -177,9 +190,9 @@ export class APReportService {
       totalPaid = totalPaid.plus(paidAmount);
       grossOutstanding = grossOutstanding.plus(outstanding);
 
-      // Vouchers in approved/partial cycles or contributing carry-forward are excluded —
-      // their outstanding is represented by the synthetic settlement row for the cycle.
-      if (approvedOrPartialVoucherIds.has(v.id) || carryForwardExcludedIds.has(v.id)) {
+      // Vouchers in any active cycle or contributing carry-forward are excluded —
+      // their outstanding is represented by the synthetic row for the cycle.
+      if (excludedVoucherIds.has(v.id) || carryForwardExcludedIds.has(v.id)) {
         continue;
       }
 
@@ -207,6 +220,8 @@ export class APReportService {
         voucherNumber: v.voucherNumber,
         contactId: v.contactId ?? '',
         contactName: v.contact?.name ?? '—',
+        contactType: v.contact?.type ?? null,
+        voucherType: VoucherType.PURCHASE,
         bankAccountLast4: bankAcct && bankAcct.length >= 4 ? bankAcct.slice(-4) : null,
         date: toDateStr(v.date as unknown as Date)!,
         dueDate: toDateStr(dueDate),
@@ -223,111 +238,180 @@ export class APReportService {
         nettingCycleId: cycleInfo?.cycleId ?? null,
         nettingCycleStatus: cycleInfo?.cycleStatus ?? null,
         isNettingSettlement: false,
+        isInApprovedCycle: false,
       });
     }
 
-    // --- Synthetic settlement rows for APPROVED/PARTIAL cycles ---
+    // --- Synthetic collapsible rows for all non-rejected active netting cycles ---
     if (includeNettingAdjustments) {
-      for (const cycle of approvedCycles) {
+      for (const cycle of syntheticRowCycles) {
+        const isApprovedOrPartial =
+          cycle.status === NettingCycleStatus.APPROVED ||
+          cycle.status === NettingCycleStatus.PARTIAL;
         const linkedIds = cycle.invoices.map((i: any) => i.voucherId);
 
-        let cycleReceivable = new Decimal(0);
-        let cyclePayable = new Decimal(0);
+        let displayAmount: Decimal;
 
-        for (const inv of cycle.invoices) {
-          const v = inv.voucher;
-          if (!v) continue;
-          const paid = v.invoiceAllocations.reduce(
-            (s: Decimal, a: any) => s.plus(new Decimal(a.amount.toString())),
-            new Decimal(0),
-          );
-          const remaining = new Decimal(v.totalAmount.toString()).minus(paid);
-          if (remaining.greaterThan(0)) {
-            if (v.voucherType === VoucherType.SALES) {
-              cycleReceivable = cycleReceivable.plus(remaining);
-            } else {
-              cyclePayable = cyclePayable.plus(remaining);
+        if (isApprovedOrPartial) {
+          let cycleReceivable = new Decimal(0);
+          let cyclePayable = new Decimal(0);
+
+          for (const inv of cycle.invoices) {
+            const v = inv.voucher;
+            if (!v) continue;
+            const paid = v.invoiceAllocations.reduce(
+              (s: Decimal, a: any) => s.plus(new Decimal(a.amount.toString())),
+              new Decimal(0),
+            );
+            const remaining = new Decimal(v.totalAmount.toString()).minus(paid);
+            if (remaining.greaterThan(0)) {
+              if (v.voucherType === VoucherType.SALES) {
+                cycleReceivable = cycleReceivable.plus(remaining);
+              } else {
+                cyclePayable = cyclePayable.plus(remaining);
+              }
             }
           }
-        }
 
-        // Recompute carry-forward outstanding for this cycle
-        let carryForward = new Decimal(0);
-        const cfVouchers = await this.prisma.voucher.findMany({
-          where: {
-            tenantId,
-            contactId: cycle.contactId,
-            status: VoucherStatus.POSTED,
-            voucherType: { in: [VoucherType.SALES, VoucherType.PURCHASE] },
-            date: { lt: cycle.startDate },
-            ...(linkedIds.length > 0 ? { id: { notIn: linkedIds } } : {}),
-          },
-          select: {
-            voucherType: true,
-            totalAmount: true,
-            invoiceAllocations: {
-              where: { paidAt: { lte: asOfDate } },
-              select: { amount: true },
+          let carryForward = new Decimal(0);
+          const cfVouchers = await this.prisma.voucher.findMany({
+            where: {
+              tenantId,
+              contactId: cycle.contactId,
+              status: VoucherStatus.POSTED,
+              voucherType: { in: [VoucherType.SALES, VoucherType.PURCHASE] },
+              date: { lt: cycle.startDate },
+              ...(linkedIds.length > 0 ? { id: { notIn: linkedIds } } : {}),
             },
-          },
-        });
+            select: {
+              voucherType: true,
+              totalAmount: true,
+              invoiceAllocations: {
+                where: { paidAt: { lte: asOfDate } },
+                select: { amount: true },
+              },
+            },
+          });
 
-        for (const cfv of cfVouchers) {
-          const paid = cfv.invoiceAllocations.reduce(
-            (s, a) => s.plus(new Decimal(a.amount.toString())),
-            new Decimal(0),
-          );
-          const remaining = new Decimal(cfv.totalAmount.toString()).minus(paid);
-          if (remaining.greaterThan(0.0001)) {
-            const sign = cfv.voucherType === VoucherType.SALES ? 1 : -1;
-            carryForward = carryForward.plus(remaining.times(sign));
+          for (const cfv of cfVouchers) {
+            const paid = cfv.invoiceAllocations.reduce(
+              (s, a) => s.plus(new Decimal(a.amount.toString())),
+              new Decimal(0),
+            );
+            const remaining = new Decimal(cfv.totalAmount.toString()).minus(paid);
+            if (remaining.greaterThan(0.0001)) {
+              const sign = cfv.voucherType === VoucherType.SALES ? 1 : -1;
+              carryForward = carryForward.plus(remaining.times(sign));
+            }
           }
+
+          const cycleNet = cycleReceivable.minus(cyclePayable);
+          const netTotal = cycleNet.plus(carryForward);
+          const absNet = netTotal.abs().toDecimalPlaces(4);
+          const isSettled = absNet.lessThanOrEqualTo(0.0001);
+          const isPayable = netTotal.lessThan(-0.0001);
+
+          if (!isPayable && !isSettled) continue;
+          if (isSettled && showOutstandingOnly) continue;
+          displayAmount = absNet;
+        } else {
+          // Pending/Open: show gross PURCHASE outstanding (netting not yet approved)
+          let pendingPayable = new Decimal(0);
+          for (const inv of cycle.invoices) {
+            const v = inv.voucher;
+            if (!v || v.voucherType !== VoucherType.PURCHASE) continue;
+            const paid = v.invoiceAllocations.reduce(
+              (s: Decimal, a: any) => s.plus(new Decimal(a.amount.toString())),
+              new Decimal(0),
+            );
+            const remaining = new Decimal(v.totalAmount.toString()).minus(paid);
+            if (remaining.greaterThan(0)) pendingPayable = pendingPayable.plus(remaining);
+          }
+          if (pendingPayable.lessThanOrEqualTo(0.0001) && showOutstandingOnly) continue;
+          displayAmount = pendingPayable.toDecimalPlaces(4);
         }
 
-        const cycleNet = cycleReceivable.minus(cyclePayable);
-        const netTotal = cycleNet.plus(carryForward);
-        const absNet = netTotal.abs().toDecimalPlaces(4);
-
-        const isSettled = absNet.lessThanOrEqualTo(0.0001);
-        const isPayable = netTotal.lessThan(-0.0001);
-
-        // AP report only shows payable net positions
-        if (!isPayable && !isSettled) continue;
-        if (isSettled && showOutstandingOnly) continue;
-
-        const cycleDueDate = cycle.dueDate instanceof Date ? cycle.dueDate : new Date(cycle.dueDate);
+        const rawDueDate = isApprovedOrPartial
+          ? (cycle.dueDate ?? cycle.endDate ?? cycle.startDate)
+          : (cycle.endDate ?? cycle.dueDate ?? cycle.startDate);
+        const cycleDueDate = rawDueDate instanceof Date ? rawDueDate : new Date(rawDueDate ?? new Date());
         const daysOverdue = daysBetween(cycleDueDate, asOfDate);
         const bucket = getAgingBucket(daysOverdue);
 
-        totalOutstanding = totalOutstanding.plus(absNet);
+        totalOutstanding = totalOutstanding.plus(displayAmount);
 
-        if (absNet.greaterThan(0)) {
-          if (bucket === 'current') aging.current = aging.current.plus(absNet);
-          else if (bucket === '1-30') aging.days1to30 = aging.days1to30.plus(absNet);
-          else if (bucket === '31-60') aging.days31to60 = aging.days31to60.plus(absNet);
-          else if (bucket === '61-90') aging.days61to90 = aging.days61to90.plus(absNet);
-          else aging.days91plus = aging.days91plus.plus(absNet);
+        if (displayAmount.greaterThan(0)) {
+          if (bucket === 'current') aging.current = aging.current.plus(displayAmount);
+          else if (bucket === '1-30') aging.days1to30 = aging.days1to30.plus(displayAmount);
+          else if (bucket === '31-60') aging.days31to60 = aging.days31to60.plus(displayAmount);
+          else if (bucket === '61-90') aging.days61to90 = aging.days61to90.plus(displayAmount);
+          else aging.days91plus = aging.days91plus.plus(displayAmount);
         }
+
+        const constituentRows = cycle.invoices
+          .map((inv: any) => {
+            const cv = inv.voucher;
+            if (!cv) return null;
+            const cvPaid = cv.invoiceAllocations.reduce(
+              (s: Decimal, a: any) => s.plus(new Decimal(a.amount.toString())),
+              new Decimal(0),
+            );
+            const cvAmt = new Decimal(cv.totalAmount.toString());
+            const cvOutstanding = cvAmt.minus(cvPaid).toDecimalPlaces(4);
+            const cvDate = cv.date instanceof Date ? cv.date : new Date(cv.date);
+            const cvTermDays = cycle.contact?.paymentTermDays ?? 0;
+            const cvDueDate = cvTermDays > 0 ? addDays(cvDate, cvTermDays) : cvDate;
+            const cvDaysOverdue = daysBetween(cvDueDate, asOfDate);
+            return {
+              voucherId: inv.voucherId,
+              voucherNumber: cv.voucherNumber,
+              contactId: cycle.contactId,
+              contactName: cycle.contact?.name ?? '—',
+              contactType: cycle.contact?.type ?? null,
+              voucherType: cv.voucherType,
+              date: toDateStr(cv.date as unknown as Date)!,
+              dueDate: toDateStr(cvDueDate),
+              totalAmount: cvAmt.toFixed(4),
+              paidAmount: cvPaid.toFixed(4),
+              outstandingAmount: cvOutstanding.toFixed(4),
+              daysOverdue: cvDaysOverdue,
+              agingBucket: getAgingBucket(cvDaysOverdue),
+              status: cv.status,
+              reference: cv.reference ?? null,
+              narration: cv.narration,
+              commentCount: cv._count?.comments ?? 0,
+              markedPaid: cvOutstanding.lessThanOrEqualTo(0),
+              nettingCycleId: cycle.id,
+              nettingCycleStatus: cycle.status,
+              isNettingSettlement: false,
+              isInApprovedCycle: isApprovedOrPartial,
+            };
+          })
+          .filter(Boolean);
 
         allRows.push({
           voucherId: `netting-${cycle.id}`,
           voucherNumber: `NETTING-${cycle.id.slice(0, 8).toUpperCase()}`,
           contactId: cycle.contactId,
           contactName: cycle.contact?.name ?? '—',
+          contactType: cycle.contact?.type ?? null,
+          voucherType: null,
           date: toDateStr(cycle.startDate)!,
           dueDate: toDateStr(cycleDueDate),
-          totalAmount: absNet.toFixed(4),
+          totalAmount: displayAmount.toFixed(4),
           paidAmount: '0.0000',
-          outstandingAmount: absNet.toFixed(4),
+          outstandingAmount: displayAmount.toFixed(4),
           daysOverdue,
           agingBucket: bucket,
           status: cycle.status,
           reference: null,
-          narration: `Netting settlement (${toDateStr(cycle.startDate)} – ${toDateStr(cycle.endDate)})`,
+          narration: `Netting ${isApprovedOrPartial ? 'settlement' : 'cycle'} (${toDateStr(cycle.startDate)} – ${toDateStr(cycle.endDate)})`,
           commentCount: 0,
           nettingCycleId: cycle.id,
           nettingCycleStatus: cycle.status,
           isNettingSettlement: true,
+          isInApprovedCycle: false,
+          constituentRows,
         });
       }
     }
