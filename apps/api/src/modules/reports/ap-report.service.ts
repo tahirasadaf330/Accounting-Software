@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { VoucherType, VoucherStatus, NettingCycleStatus } from '@prisma/client';
+import { VoucherType, VoucherStatus, NettingCycleStatus, ContactType } from '@prisma/client';
 import { ARAPReportQueryDto } from './dto/ar-ap-report-query.dto';
 import { AgingBucket } from '@accounting-saas/shared';
 import Decimal from 'decimal.js';
@@ -69,6 +69,24 @@ export class APReportService {
 
     if (filters.contactId) {
       where.contactId = filters.contactId;
+    }
+
+    if (includeNettingAdjustments) {
+      // BOTH-type contacts only show invoices linked to a cycle that generates
+      // a synthetic settlement row, so every visible BOTH invoice nests at
+      // Level 3 of the hierarchy. Rejected and SETTLED cycles are excluded by
+      // virtue of being absent from SYNTHETIC_ROW_STATUSES.
+      where.OR = [
+        { contact: { type: { not: ContactType.BOTH } } },
+        {
+          contact: { type: ContactType.BOTH },
+          nettingCycleInvoices: {
+            some: {
+              cycle: { status: { in: Array.from(SYNTHETIC_ROW_STATUSES) } },
+            },
+          },
+        },
+      ];
     }
 
     const vouchers = await this.prisma.voucher.findMany({
