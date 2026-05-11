@@ -5,20 +5,34 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { ConfigService } from '@nestjs/config';
 import { CreateNettingCycleDto, AddCommentDto, RejectDto } from './dto/netting-cycle.dto';
-import { NettingCycleStatus, VoucherType, VoucherStatus } from '@prisma/client';
+import { NettingCycleStatus, VoucherType, VoucherStatus, AccountType } from '@prisma/client';
+import { VouchersService } from '../vouchers/vouchers.service';
 
 @Injectable()
 export class NettingCyclesService {
   private readonly webUrl: string;
 
+  private static readonly UPLOADS_BASE = path.join(process.cwd(), 'uploads');
+  private static readonly ALLOWED_PROOF_MIME_TYPES = new Set([
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'application/pdf',
+  ]);
+
   constructor(
     private prisma: PrismaService,
     private mailService: MailService,
     private config: ConfigService,
+    private vouchersService: VouchersService,
   ) {
     this.webUrl = this.config.get<string>('WEB_URL', 'http://localhost:3000');
   }
@@ -372,6 +386,353 @@ export class NettingCyclesService {
       this.prisma.nettingCycleInvoice.deleteMany({ where: { cycleId: id } }),
       this.prisma.nettingCycle.delete({ where: { id } }),
     ]);
+  }
+
+  async settleCycle(
+    tenantId: string,
+    cycleId: string,
+    userId: string,
+    opts: {
+      cashAmount?: string;
+      bankAccountId?: string;
+      paymentDate?: string;
+      file?: { filename: string; mimetype: string; buffer: Buffer };
+    },
+  ) {
+    const cycle = await this.prisma.nettingCycle.findFirst({
+      where: { id: cycleId, tenantId },
+      include: {
+        contact: {
+          select: { id: true, accountId: true, name: true, currencyCode: true },
+        },
+        invoices: {
+          include: {
+            voucher: {
+              select: {
+                id: true,
+                voucherNumber: true,
+                voucherType: true,
+                status: true,
+                date: true,
+                totalAmount: true,
+                currencyCode: true,
+                invoiceAllocations: { select: { amount: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!cycle) throw new NotFoundException('Netting cycle not found');
+
+    // Settlement is allowed from any non-terminal status (Open, Pending AM,
+    // Pending CEO, Approved, Partial). Rejected or already-settled cycles
+    // cannot be settled.
+    const SETTLEABLE_STATUSES: NettingCycleStatus[] = [
+      NettingCycleStatus.OPEN,
+      NettingCycleStatus.PENDING_AM,
+      NettingCycleStatus.PENDING_CEO,
+      NettingCycleStatus.APPROVED,
+      NettingCycleStatus.PARTIAL,
+    ];
+    if (!SETTLEABLE_STATUSES.includes(cycle.status)) {
+      throw new BadRequestException(
+        'This netting cycle cannot be settled (already settled or rejected)',
+      );
+    }
+    if (!cycle.contact?.accountId) {
+      throw new BadRequestException(
+        'Cycle contact must have a linked trade account',
+      );
+    }
+
+    type SidedInvoice = {
+      id: string;
+      voucherNumber: string;
+      remaining: Decimal;
+      date: Date;
+    };
+    const arInvoices: SidedInvoice[] = [];
+    const apInvoices: SidedInvoice[] = [];
+
+    for (const link of cycle.invoices) {
+      const v = link.voucher;
+      if (!v || v.status !== VoucherStatus.POSTED) continue;
+      const paid = v.invoiceAllocations.reduce(
+        (s, a) => s.plus(new Decimal(a.amount.toString())),
+        new Decimal(0),
+      );
+      const remaining = new Decimal(v.totalAmount.toString()).minus(paid);
+      if (remaining.lessThanOrEqualTo(0)) continue;
+      const entry: SidedInvoice = {
+        id: v.id,
+        voucherNumber: v.voucherNumber,
+        remaining,
+        date: v.date instanceof Date ? v.date : new Date(v.date),
+      };
+      if (v.voucherType === VoucherType.SALES) arInvoices.push(entry);
+      else if (v.voucherType === VoucherType.PURCHASE) apInvoices.push(entry);
+    }
+
+    arInvoices.sort((a, b) => a.date.getTime() - b.date.getTime());
+    apInvoices.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    const arTotal = arInvoices.reduce(
+      (s, x) => s.plus(x.remaining),
+      new Decimal(0),
+    );
+    const apTotal = apInvoices.reduce(
+      (s, x) => s.plus(x.remaining),
+      new Decimal(0),
+    );
+
+    if (arTotal.lessThanOrEqualTo(0) && apTotal.lessThanOrEqualTo(0)) {
+      throw new BadRequestException(
+        'Cycle has no outstanding invoices to settle',
+      );
+    }
+
+    const offset = Decimal.min(arTotal, apTotal);
+    const net = arTotal.minus(apTotal);
+    const netAbs = net.abs();
+    const isReceivable = net.greaterThan(0);
+
+    let cash = new Decimal(0);
+    if (opts.cashAmount !== undefined && opts.cashAmount !== '') {
+      try {
+        cash = new Decimal(opts.cashAmount);
+      } catch {
+        throw new BadRequestException('cashAmount must be a number');
+      }
+      if (!cash.isFinite() || cash.lessThan(0)) {
+        throw new BadRequestException('cashAmount must be zero or greater');
+      }
+      if (cash.greaterThan(netAbs)) {
+        throw new BadRequestException(
+          `cashAmount (${cash.toFixed(4)}) exceeds net (${netAbs.toFixed(4)})`,
+        );
+      }
+      cash = cash.toDecimalPlaces(4, Decimal.ROUND_HALF_EVEN);
+    }
+
+    if (offset.lessThanOrEqualTo(0) && cash.lessThanOrEqualTo(0)) {
+      throw new BadRequestException(
+        'Nothing to settle. Either both sides are zero, or provide a cash amount.',
+      );
+    }
+
+    let bankAccountId = opts.bankAccountId;
+    if (cash.greaterThan(0)) {
+      if (!bankAccountId) {
+        const defaultBank = await this.prisma.bankAccount.findFirst({
+          where: { tenantId, isActive: true },
+          orderBy: { createdAt: 'asc' },
+          select: { accountId: true },
+        });
+        if (defaultBank) {
+          bankAccountId = defaultBank.accountId;
+        } else {
+          const fallbackAsset = await this.prisma.account.findFirst({
+            where: { tenantId, accountType: AccountType.ASSET, isActive: true },
+            orderBy: { code: 'asc' },
+            select: { id: true },
+          });
+          if (!fallbackAsset) {
+            throw new BadRequestException(
+              'No bank/cash account found for this tenant. Configure one before settling.',
+            );
+          }
+          bankAccountId = fallbackAsset.id;
+        }
+      } else {
+        const bank = await this.prisma.account.findFirst({
+          where: { id: bankAccountId, tenantId, isActive: true },
+          select: { id: true },
+        });
+        if (!bank) throw new NotFoundException('Bank account not found');
+      }
+    }
+
+    const paymentDate = opts.paymentDate
+      ? new Date(opts.paymentDate)
+      : new Date();
+    const paymentDateStr = paymentDate.toISOString().split('T')[0];
+
+    type Alloc = { invoiceVoucherId: string; amount: number; paidAt: string };
+    const allocations: Alloc[] = [];
+
+    const distribute = (
+      invoices: SidedInvoice[],
+      amount: Decimal,
+    ): void => {
+      let left = amount;
+      for (const inv of invoices) {
+        if (left.lessThanOrEqualTo(0)) break;
+        const take = Decimal.min(left, inv.remaining);
+        if (take.greaterThan(0)) {
+          allocations.push({
+            invoiceVoucherId: inv.id,
+            amount: take.toDecimalPlaces(4).toNumber(),
+            paidAt: paymentDateStr,
+          });
+          inv.remaining = inv.remaining.minus(take);
+          left = left.minus(take);
+        }
+      }
+    };
+
+    if (offset.greaterThan(0)) {
+      distribute(arInvoices, offset);
+      distribute(apInvoices, offset);
+    }
+
+    if (cash.greaterThan(0)) {
+      if (isReceivable) distribute(arInvoices, cash);
+      else distribute(apInvoices, cash);
+    }
+
+    const tradeAccountId = cycle.contact.accountId;
+    const offsetStr = offset.toFixed(4);
+    const cashStr = cash.toFixed(4);
+
+    const lineItems: any[] = [];
+    if (offset.greaterThan(0)) {
+      lineItems.push({
+        accountId: tradeAccountId,
+        debit: offsetStr,
+        credit: '0',
+        narration: 'Netting offset (AP cleared)',
+      });
+      lineItems.push({
+        accountId: tradeAccountId,
+        debit: '0',
+        credit: offsetStr,
+        narration: 'Netting offset (AR cleared)',
+      });
+    }
+    if (cash.greaterThan(0) && bankAccountId) {
+      if (isReceivable) {
+        lineItems.push({
+          accountId: bankAccountId,
+          debit: cashStr,
+          credit: '0',
+          narration: 'Bank receipt for net AR',
+        });
+        lineItems.push({
+          accountId: tradeAccountId,
+          debit: '0',
+          credit: cashStr,
+          narration: 'Receipt of net AR',
+        });
+      } else {
+        lineItems.push({
+          accountId: tradeAccountId,
+          debit: cashStr,
+          credit: '0',
+          narration: 'Payment of net AP',
+        });
+        lineItems.push({
+          accountId: bankAccountId,
+          debit: '0',
+          credit: cashStr,
+          narration: 'Bank payment for net AP',
+        });
+      }
+    }
+
+    const voucherCurrency =
+      cycle.contact.currencyCode ??
+      cycle.invoices[0]?.voucher?.currencyCode ??
+      'USD';
+
+    const result = await this.vouchersService.createWithAllocations(
+      tenantId,
+      userId,
+      {
+        voucher: {
+          voucherType: VoucherType.JOURNAL,
+          date: paymentDateStr,
+          narration: `Netting settlement for cycle ${cycle.id
+            .slice(0, 8)
+            .toUpperCase()}`,
+          contactId: cycle.contactId,
+          currencyCode: voucherCurrency,
+          lineItems,
+        },
+        allocations,
+      } as any,
+    );
+
+    if (!result) {
+      throw new Error('Failed to create settlement voucher');
+    }
+
+    if (opts.file) {
+      if (
+        !NettingCyclesService.ALLOWED_PROOF_MIME_TYPES.has(opts.file.mimetype)
+      ) {
+        throw new BadRequestException(
+          `File type "${opts.file.mimetype}" is not allowed`,
+        );
+      }
+      const ext = path.extname(opts.file.filename) || '';
+      const storedName = `${randomUUID()}${ext}`;
+      const relativeDir = path.join(tenantId, 'vouchers', result.id);
+      const absoluteDir = path.join(
+        NettingCyclesService.UPLOADS_BASE,
+        relativeDir,
+      );
+      const relativePath = path.join(relativeDir, storedName);
+      const absolutePath = path.join(absoluteDir, storedName);
+      await fs.mkdir(absoluteDir, { recursive: true });
+      await fs.writeFile(absolutePath, opts.file.buffer);
+      await this.prisma.voucherAttachment.create({
+        data: {
+          voucherId: result.id,
+          tenantId,
+          fileName: opts.file.filename,
+          filePath: relativePath,
+          fileSize: opts.file.buffer.length,
+          mimeType: opts.file.mimetype,
+          category: 'payment_proof',
+        },
+      });
+    }
+
+    const arRemainingAfter = arTotal
+      .minus(offset)
+      .minus(isReceivable ? cash : new Decimal(0));
+    const apRemainingAfter = apTotal
+      .minus(offset)
+      .minus(isReceivable ? new Decimal(0) : cash);
+    const fullySettled =
+      arRemainingAfter.abs().lessThanOrEqualTo(0.0001) &&
+      apRemainingAfter.abs().lessThanOrEqualTo(0.0001);
+
+    let newStatus: NettingCycleStatus = cycle.status;
+    if (fullySettled) {
+      newStatus = NettingCycleStatus.SETTLED;
+    } else {
+      // Any non-terminal cycle becomes PARTIAL once settlement has been applied.
+      newStatus = NettingCycleStatus.PARTIAL;
+    }
+    if (newStatus !== cycle.status) {
+      await this.prisma.nettingCycle.update({
+        where: { id: cycle.id },
+        data: { status: newStatus },
+      });
+    }
+
+    return {
+      voucherId: result.id,
+      voucherNumber: result.voucherNumber,
+      offsetAmount: offsetStr,
+      cashAmount: cashStr,
+      totalAmount: offset.plus(cash).toFixed(4),
+      cycleStatus: newStatus,
+      arRemaining: arRemainingAfter.toFixed(4),
+      apRemaining: apRemainingAfter.toFixed(4),
+    };
   }
 
   // --- Public token-based methods (no auth required) ---

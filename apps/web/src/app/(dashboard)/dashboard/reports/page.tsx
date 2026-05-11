@@ -25,6 +25,7 @@ import { exportInvoiceReportExcel } from './exportInvoiceReportExcel';
 import ContactQuickViewModal from '@/components/ContactQuickViewModal';
 import CommentsModal from '@/components/CommentsModal';
 import MarkPaidModal from '@/components/MarkPaidModal';
+import NettingSettlementModal from '@/components/NettingSettlementModal';
 
 interface Account {
   id: string;
@@ -270,7 +271,8 @@ function ARAPReportView({
   const [expandedCycles, setExpandedCycles] = useState<Set<string>>(new Set());
   const [contactModalId, setContactModalId] = useState<string | null>(null);
   const [commentsVoucher, setCommentsVoucher] = useState<{ id: string; number: string } | null>(null);
-  const [markPaidVoucher, setMarkPaidVoucher] = useState<{ id: string; number: string; alreadyPaid: boolean } | null>(null);
+  const [markPaidVoucher, setMarkPaidVoucher] = useState<{ id: string; number: string; alreadyPaid: boolean; outstandingAmount?: string; currencyCode?: string } | null>(null);
+  const [settlementCycle, setSettlementCycle] = useState<{ id: string; contactName: string; cycleLabel: string; arTotal: string; apTotal: string; currencyCode?: string } | null>(null);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
 
   const groupedContacts = useMemo(() => {
@@ -337,14 +339,20 @@ function ARAPReportView({
   const handleExpandAll = () => setExpandedContacts(new Set(filteredGroups.map((g) => g.contactId)));
   const handleCollapseAll = () => { setExpandedContacts(new Set()); setExpandedCycles(new Set()); };
 
-  const getFirstPayable = (group: any): { id: string; number: string; alreadyPaid: boolean } | null => {
+  const getFirstPayable = (group: any): { id: string; number: string; alreadyPaid: boolean; outstandingAmount?: string; currencyCode?: string } | null => {
     // For CUSTOMER/VENDOR: find first payable top-level row
     const topLevel = group.rows.find((r: any) =>
       Number(r.outstandingAmount) > 0 &&
       !r.isNettingSettlement &&
       !PENDING_NETTING_STATUSES.has(r.nettingCycleStatus),
     );
-    if (topLevel) return { id: topLevel.voucherId, number: topLevel.voucherNumber, alreadyPaid: !!topLevel.markedPaid };
+    if (topLevel) return {
+      id: topLevel.voucherId,
+      number: topLevel.voucherNumber,
+      alreadyPaid: !!topLevel.markedPaid,
+      outstandingAmount: topLevel.outstandingAmount,
+      currencyCode: topLevel.currencyCode,
+    };
 
     // For BOTH contacts: search constituent rows inside settlement rows.
     // Only pick the correct voucher type to avoid wrong-account mark-paid (SALES for AR, PURCHASE for AP).
@@ -358,7 +366,13 @@ function ARAPReportView({
           !inv.markedPaid &&
           inv.voucherType === expectedType
         ) {
-          return { id: inv.voucherId, number: inv.voucherNumber, alreadyPaid: false };
+          return {
+            id: inv.voucherId,
+            number: inv.voucherNumber,
+            alreadyPaid: false,
+            outstandingAmount: inv.outstandingAmount,
+            currencyCode: inv.currencyCode,
+          };
         }
       }
     }
@@ -371,7 +385,36 @@ function ARAPReportView({
     const inv = (row.constituentRows ?? []).find((c: any) =>
       Number(c.outstandingAmount) > 0 && !c.markedPaid && c.voucherType === expectedType,
     );
-    return inv ? { id: inv.voucherId, number: inv.voucherNumber, alreadyPaid: false } : null;
+    return inv ? {
+      id: inv.voucherId,
+      number: inv.voucherNumber,
+      alreadyPaid: false,
+      outstandingAmount: inv.outstandingAmount,
+      currencyCode: inv.currencyCode,
+    } : null;
+  };
+
+  // For a settlement row in an APPROVED/PARTIAL cycle: build the payload to open
+  // the netting settlement modal (offset + cash flow).
+  const buildSettlementCyclePayload = (row: any) => {
+    const constituents: any[] = Array.isArray(row.constituentRows) ? row.constituentRows : [];
+    let arTotal = 0;
+    let apTotal = 0;
+    for (const c of constituents) {
+      const out = Number(c.outstandingAmount);
+      if (!Number.isFinite(out) || out <= 0) continue;
+      if (c.voucherType === 'SALES') arTotal += out;
+      else if (c.voucherType === 'PURCHASE') apTotal += out;
+    }
+    const currencyCode = constituents.find((c) => c.currencyCode)?.currencyCode;
+    return {
+      id: row.nettingCycleId as string,
+      contactName: row.contactName ?? '—',
+      cycleLabel: row.voucherNumber as string,
+      arTotal: arTotal.toFixed(4),
+      apTotal: apTotal.toFixed(4),
+      currencyCode,
+    };
   };
 
   return (
@@ -628,9 +671,14 @@ function ARAPReportView({
                             {isSettlement ? (
                               settlementPayable ? (
                                 <button type="button"
-                                  onClick={() => setMarkPaidVoucher(settlementPayable)}
+                                  onClick={() => {
+                                    // Always open the Settle Netting Cycle modal on synthetic rows so the user
+                                    // sees the net AR/AP regardless of approval state. The modal itself shows a
+                                    // warning and disables submit until the cycle is APPROVED or PARTIAL.
+                                    setSettlementCycle(buildSettlementCyclePayload(row));
+                                  }}
                                   className="inline-flex rounded-lg p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-700"
-                                  title="Mark first outstanding invoice in this cycle as paid"
+                                  title="Settle this netting cycle (offset AR/AP and pay the net)"
                                 >
                                   <CheckCircle2 className="h-4 w-4" />
                                 </button>
@@ -643,7 +691,7 @@ function ARAPReportView({
                               )
                             ) : (
                               <button type="button"
-                                onClick={() => setMarkPaidVoucher({ id: row.voucherId, number: row.voucherNumber, alreadyPaid: !!row.markedPaid })}
+                                onClick={() => setMarkPaidVoucher({ id: row.voucherId, number: row.voucherNumber, alreadyPaid: !!row.markedPaid, outstandingAmount: row.outstandingAmount, currencyCode: row.currencyCode })}
                                 className={cn('inline-flex rounded-lg p-1.5 hover:bg-green-50', row.markedPaid ? 'text-green-600' : 'text-gray-400 hover:text-green-700')}
                                 title={row.markedPaid ? 'Fully paid' : 'Mark as paid'}
                               >
@@ -720,7 +768,7 @@ function ARAPReportView({
                                   </button>
                                 ) : (
                                   <button type="button"
-                                    onClick={() => setMarkPaidVoucher({ id: inv.voucherId, number: inv.voucherNumber, alreadyPaid: !!inv.markedPaid })}
+                                    onClick={() => setMarkPaidVoucher({ id: inv.voucherId, number: inv.voucherNumber, alreadyPaid: !!inv.markedPaid, outstandingAmount: inv.outstandingAmount, currencyCode: inv.currencyCode })}
                                     className={cn('inline-flex rounded-lg p-1 hover:bg-green-50', inv.markedPaid ? 'text-green-600' : 'text-gray-400 hover:text-green-700')}
                                     title={inv.markedPaid ? 'Fully paid' : 'Mark as paid'}
                                   >
@@ -786,7 +834,21 @@ function ARAPReportView({
         voucherId={markPaidVoucher?.id ?? null}
         voucherNumber={markPaidVoucher?.number}
         alreadyPaid={markPaidVoucher?.alreadyPaid}
+        outstandingAmount={markPaidVoucher?.outstandingAmount}
+        currencyCode={markPaidVoucher?.currencyCode}
         onClose={() => setMarkPaidVoucher(null)}
+        onSuccess={() => onRefresh?.()}
+      />
+
+      <NettingSettlementModal
+        open={settlementCycle != null}
+        cycleId={settlementCycle?.id ?? null}
+        contactName={settlementCycle?.contactName}
+        cycleLabel={settlementCycle?.cycleLabel}
+        arTotal={settlementCycle?.arTotal}
+        apTotal={settlementCycle?.apTotal}
+        currencyCode={settlementCycle?.currencyCode}
+        onClose={() => setSettlementCycle(null)}
         onSuccess={() => onRefresh?.()}
       />
     </div>

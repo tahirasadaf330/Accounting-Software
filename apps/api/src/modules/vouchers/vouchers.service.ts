@@ -1816,6 +1816,7 @@ export class VouchersService {
     opts: {
       bankAccountId?: string;
       paymentDate?: string;
+      paymentAmount?: string;
       file?: { filename: string; mimetype: string; buffer: Buffer };
     },
   ) {
@@ -1880,6 +1881,25 @@ export class VouchersService {
       throw new BadRequestException('Invoice is already fully paid');
     }
 
+    let amountToApply = outstanding;
+    if (opts.paymentAmount !== undefined && opts.paymentAmount !== '') {
+      let requested: Decimal;
+      try {
+        requested = new Decimal(opts.paymentAmount);
+      } catch {
+        throw new BadRequestException('paymentAmount must be a number');
+      }
+      if (!requested.isFinite() || requested.lessThanOrEqualTo(0)) {
+        throw new BadRequestException('paymentAmount must be greater than zero');
+      }
+      if (requested.greaterThan(outstanding)) {
+        throw new BadRequestException(
+          `paymentAmount (${requested.toFixed(4)}) exceeds outstanding (${outstanding.toFixed(4)})`,
+        );
+      }
+      amountToApply = requested.toDecimalPlaces(4, Decimal.ROUND_HALF_EVEN);
+    }
+
     const bank = await this.prisma.account.findFirst({
       where: { id: bankAccountId, tenantId, isActive: true },
       select: { id: true },
@@ -1888,7 +1908,7 @@ export class VouchersService {
 
     const isAP = invoice.voucherType === VoucherType.PURCHASE;
     const tradeAccountId = invoice.contact.accountId;
-    const amountStr = outstanding.toFixed(4);
+    const amountStr = amountToApply.toFixed(4);
     const paymentDate = opts.paymentDate
       ? new Date(opts.paymentDate)
       : new Date();
@@ -1928,7 +1948,7 @@ export class VouchersService {
       allocations: [
         {
           invoiceVoucherId: invoice.id,
-          amount: outstanding.toNumber(),
+          amount: amountToApply.toNumber(),
           paidAt: paymentDateStr,
         },
       ],

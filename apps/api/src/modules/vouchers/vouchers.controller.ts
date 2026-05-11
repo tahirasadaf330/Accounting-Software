@@ -358,6 +358,7 @@ export class VouchersController {
     let file: { filename: string; mimetype: string; buffer: Buffer } | undefined;
     let bankAccountId = '';
     let paymentDate: string | undefined;
+    let paymentAmount: string | undefined;
 
     for await (const part of parts) {
       if (part.type === 'file') {
@@ -370,12 +371,17 @@ export class VouchersController {
       } else if (part.type === 'field') {
         if (part.fieldname === 'bankAccountId') bankAccountId = String(part.value ?? '');
         else if (part.fieldname === 'paymentDate') paymentDate = String(part.value ?? '') || undefined;
+        else if (part.fieldname === 'paymentAmount') {
+          const v = String(part.value ?? '').trim();
+          if (v) paymentAmount = v;
+        }
       }
     }
 
     return this.vouchersService.markPaid(tenantId, id, userId, {
       bankAccountId,
       paymentDate,
+      paymentAmount,
       file,
     });
   }

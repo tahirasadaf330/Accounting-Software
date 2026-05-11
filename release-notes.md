@@ -4,6 +4,59 @@ A running record of features, fixes, and changes per branch / release.
 
 ---
 
+## `partial-payment` branch — 2026-05-11
+
+### Added — Partial payment on AR/AP Mark as Paid
+
+- The Mark as Paid modal now exposes an **Amount** field next to the Payment Proof uploader.
+- The field is pre-filled to **2 decimals** with the invoice's full outstanding and **auto-selected** when the modal opens — so the existing one-click full-payment flow is unchanged (just press Enter / click Mark as Paid).
+- To record a partial payment (e.g. $400 of a $1,000 invoice) the user types a smaller value. The invoice stays on the AR/AP report with the reduced outstanding; multiple partial payments compose naturally because `PaymentAllocation` already supports many rows per invoice.
+- Helper text under the label shows `Outstanding: {currency} {amount}` so the cap is visible at a glance.
+- Validation:
+  - Client: button disables and inline error appears when amount ≤ 0 or amount > outstanding.
+  - Server: rejects with 400 — `paymentAmount must be greater than zero` / `paymentAmount (...) exceeds outstanding (...)`.
+- API: `POST /vouchers/:id/mark-paid` accepts an optional multipart `paymentAmount` field. Omitting it preserves today's behaviour (full payment, fully backward-compatible).
+
+### Added — Settle Netting Cycle flow
+
+- New green-check action on a Netting Settlement row (synthetic row at Level 2) opens a dedicated **Settle Netting Cycle** modal for any non-terminal cycle status (`OPEN` / `PENDING_AM` / `PENDING_CEO` / `APPROVED` / `PARTIAL`), so the user can settle a netting cycle directly from the AR/AP report without going through the formal AM/CEO approval workflow first.
+- Modal shows AR total, AP total, computed offset, and the net with a Receivable/Payable badge (all displayed to 2 decimals). Cash field is **locked** to the full net — settling a cycle always pays the full net in one go.
+- One round-trip creates a single `JOURNAL` voucher that carries both:
+  - **Offset wash**: `Dr Trade Account / Cr Trade Account` for `min(AR, AP)` — net GL impact $0 but writes `PaymentAllocation` rows on both sides (oldest-first), so the matched portion of the AR and AP invoices is properly cleared.
+  - **Cash leg** (if cash > 0): `Dr Trade / Cr Bank` for net Payable, or `Dr Bank / Cr Trade` for net Receivable — allocated to the remaining larger-side invoices.
+- Cycle status auto-updates after settlement:
+  - Both sides cleared → `SETTLED`.
+  - Anything remaining → `PARTIAL` (regardless of the starting status).
+- Backend defence-in-depth: `SETTLED` and `AM_REJECTED` / `CEO_REJECTED` cycles still cannot be settled — `BadRequestException: This netting cycle cannot be settled (already settled or rejected)`.
+- Endpoint: `POST /netting-cycles/:id/settle` (multipart: `cashAmount`, optional `bankAccountId`, `paymentDate`, `file`).
+
+### Changed — AR/AP report visibility for BOTH-type contacts
+
+- For BOTH-type contacts, the report now hides invoices that are **not linked to a synthetic-row netting cycle** (statuses `OPEN`, `PENDING_AM`, `PENDING_CEO`, `APPROVED`, `PARTIAL`). Invoices linked only to a rejected (`AM_REJECTED` / `CEO_REJECTED`) cycle or unlinked invoices are no longer surfaced.
+- This guarantees the 3-level hierarchy: every visible BOTH-contact invoice is rendered nested under its synthetic Netting Settlement row, never flat at Level 2.
+- The filter is gated on `includeNettingAdjustments === true` (the default). With the **Netting-adjusted view** toggle off, every invoice reappears (audit mode unchanged).
+- `CUSTOMER` and `VENDOR` contacts are unaffected by this filter.
+
+### Changed — Netting Settlement row outstanding now equals the cycle's own net
+
+- The synthetic Netting Settlement row's outstanding amount used to include a "carry-forward" term — every POSTED SALES/PURCHASE voucher for the same contact dated before `cycle.startDate` and not linked to the cycle, signed by AR/AP nature.
+- That term has been removed. The row's outstanding now equals `|cycle AR − cycle AP|` exactly, matching what the Settle Netting Cycle modal shows and acts on.
+- Side effect: pre-cycle unlinked invoices for BOTH contacts remain hidden under default flags (the BOTH-contact filter above still applies). Toggle off **Netting-adjusted view** to see them in audit mode.
+
+### Changed — Pending (Open / Pending AM / Pending CEO) cycles also show net
+
+- Previously pending cycles showed **gross** AR (in AR report) or gross AP (in AP report), under the assumption that netting wasn't yet legally agreed.
+- They now show the net (`|cycle AR − cycle AP|`) using the same math as approved cycles. The cycle still carries its pending badge ("Open" / "Pending AM Approval" / "Pending CEO Approval") so the user can tell the netting isn't formally approved yet.
+- Pending cycles still cannot be settled via the new Settle Netting Cycle modal — the green check falls back to single-invoice payment, unchanged.
+
+### Notes
+
+- No database migrations. All schema (`PaymentAllocation.amount Decimal(20,4)`, `NettingCycleInvoice` linkage, `NettingCycle.status` enum) already supported these flows; only application behaviour changed.
+- `Voucher.currencyCode` is now surfaced on AR/AP report row payloads (regular and constituent rows) so the frontend can label the Outstanding / Amount fields in the right currency.
+- The existing `MARKED_PAID` event payload picks up the actual paid amount (`amountStr`) automatically, so partial-payment emails / bell notifications reflect the partial figure with no extra work.
+
+---
+
 ## `notification` branch — 2026-05-07
 
 ### Added — Beneficiary Name on Contacts
