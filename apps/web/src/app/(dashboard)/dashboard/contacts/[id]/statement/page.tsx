@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { ArrowLeft, Printer, Download } from 'lucide-react';
+import { ArrowLeft, Printer } from 'lucide-react';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
 
@@ -57,7 +57,6 @@ export default function ContactStatementPage() {
   });
 
   const printRef = useRef<HTMLDivElement>(null);
-  const [isExporting, setIsExporting] = useState(false);
 
   const loadStatement = async () => {
     setLoading(true);
@@ -144,31 +143,6 @@ export default function ContactStatementPage() {
     }, 500);
   }, []);
 
-  const handleExportPdf = useCallback(async () => {
-    const node = printRef.current;
-    if (!node) return;
-
-    setIsExporting(true);
-    try {
-      const html2pdf = (await import('html2pdf.js')).default;
-      const today = new Date().toISOString().split('T')[0];
-      const filename = `Statement_of_Account_${statement?.contactName?.replace(/\s+/g, '_') || 'report'}_${today}.pdf`;
-
-      await html2pdf()
-        .set({
-          margin: 10,
-          filename,
-          html2canvas: { scale: 2, useCORS: true, logging: false },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-        })
-        .from(node)
-        .save();
-    } catch (err) {
-      console.error('PDF export failed:', err);
-    }
-    setIsExporting(false);
-  }, [statement]);
-
   return (
     <div>
       {/* Header */}
@@ -226,18 +200,6 @@ export default function ContactStatementPage() {
             >
               <Printer className="h-4 w-4" />
               Print
-            </button>
-            <button
-              onClick={handleExportPdf}
-              disabled={isExporting}
-              className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              {isExporting ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-600 border-t-transparent" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              Export PDF
             </button>
           </div>
         )}
