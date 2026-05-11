@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Upload, Loader2, FileText, Trash2 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/cn';
@@ -10,6 +10,8 @@ interface Props {
   voucherId: string | null;
   voucherNumber?: string | null;
   alreadyPaid?: boolean;
+  outstandingAmount?: string;
+  currencyCode?: string;
   onClose: () => void;
   onSuccess?: () => void;
 }
@@ -19,21 +21,71 @@ export default function MarkPaidModal({
   voucherId,
   voucherNumber,
   alreadyPaid,
+  outstandingAmount,
+  currencyCode,
   onClose,
   onSuccess,
 }: Props) {
   const [file, setFile] = useState<File | null>(null);
+  const [amount, setAmount] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const amountInputRef = useRef<HTMLInputElement>(null);
+
+  const outstandingNum = useMemo(() => {
+    const n = Number(outstandingAmount ?? '');
+    return Number.isFinite(n) ? n : 0;
+  }, [outstandingAmount]);
+
+  const formattedOutstanding = useMemo(() => {
+    if (!outstandingAmount) return '';
+    const n = Number(outstandingAmount);
+    if (!Number.isFinite(n)) return outstandingAmount;
+    return n.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }, [outstandingAmount]);
+
+  const initialAmount = useMemo(() => {
+    if (!outstandingAmount) return '';
+    const n = Number(outstandingAmount);
+    return Number.isFinite(n) ? n.toFixed(2) : outstandingAmount;
+  }, [outstandingAmount]);
+
+  const amountNum = Number(amount);
+  const amountInvalid =
+    amount === '' ||
+    !Number.isFinite(amountNum) ||
+    amountNum <= 0 ||
+    (outstandingNum > 0 && amountNum > outstandingNum);
+
+  const amountErrorMessage = (() => {
+    if (amount === '') return null;
+    if (!Number.isFinite(amountNum) || amountNum <= 0) {
+      return 'Amount must be greater than zero';
+    }
+    if (outstandingNum > 0 && amountNum > outstandingNum) {
+      return 'Amount cannot exceed outstanding';
+    }
+    return null;
+  })();
 
   useEffect(() => {
     if (!open) return;
     setFile(null);
     setError(null);
     setSubmitting(false);
+    setAmount(initialAmount);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [open]);
+    if (initialAmount) {
+      queueMicrotask(() => {
+        amountInputRef.current?.focus();
+        amountInputRef.current?.select();
+      });
+    }
+  }, [open, initialAmount]);
 
   useEffect(() => {
     if (!open) return;
@@ -54,6 +106,7 @@ export default function MarkPaidModal({
     try {
       const fd = new FormData();
       if (file) fd.append('file', file);
+      fd.append('paymentAmount', amount);
 
       await api.postFormData(`/vouchers/${voucherId}/mark-paid`, fd);
       onSuccess?.();
@@ -98,12 +151,43 @@ export default function MarkPaidModal({
 
             <p className="text-sm text-gray-600">
               A payment voucher will be created and allocated against this invoice. The
-              invoice's outstanding will go to zero and it will drop off the AP/AR report.
+              invoice's outstanding will reduce by the amount entered below.
             </p>
 
             {error && (
               <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>
             )}
+
+            <div>
+              <p className="text-sm font-medium text-gray-700">Amount</p>
+              {outstandingAmount && (
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Outstanding: {currencyCode ? `${currencyCode} ` : ''}
+                  {formattedOutstanding}
+                </p>
+              )}
+              <input
+                ref={amountInputRef}
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                step="0.01"
+                max={outstandingAmount}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                disabled={alreadyPaid}
+                className={cn(
+                  'mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400',
+                  amountErrorMessage
+                    ? 'border-red-300 focus:ring-red-300'
+                    : 'border-gray-300',
+                  alreadyPaid && 'cursor-not-allowed bg-gray-50 opacity-60',
+                )}
+              />
+              {amountErrorMessage && (
+                <p className="mt-1 text-xs text-red-600">{amountErrorMessage}</p>
+              )}
+            </div>
 
             <div>
               <p className="mb-1 text-sm font-medium text-gray-700">Payment Proof</p>
@@ -167,7 +251,7 @@ export default function MarkPaidModal({
             </button>
             <button
               type="submit"
-              disabled={submitting || alreadyPaid}
+              disabled={submitting || alreadyPaid || amountInvalid}
               className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}

@@ -6,11 +6,13 @@ import {
   Param,
   Body,
   Query,
+  Req,
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery, ApiConsumes } from '@nestjs/swagger';
+import { FastifyRequest } from 'fastify';
 import { Role } from '@prisma/client';
 import { NettingCyclesService } from './netting-cycles.service';
 import { CreateNettingCycleDto, AddCommentDto, RejectDto } from './dto/netting-cycle.dto';
@@ -137,5 +139,59 @@ export class NettingCyclesController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     await this.service.delete(tenantId, id);
+  }
+
+  @Post(':id/settle')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary:
+      'Settle an APPROVED or PARTIAL netting cycle: offsets AR/AP and pays the net cash difference in one journal voucher',
+  })
+  async settle(
+    @TenantId() tenantId: string,
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: FastifyRequest,
+  ) {
+    const parts = req.parts();
+    let file:
+      | { filename: string; mimetype: string; buffer: Buffer }
+      | undefined;
+    let bankAccountId: string | undefined;
+    let paymentDate: string | undefined;
+    let cashAmount: string | undefined;
+
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of part.file) chunks.push(chunk);
+        const buf = Buffer.concat(chunks);
+        if (buf.length > 0) {
+          file = {
+            filename: part.filename,
+            mimetype: part.mimetype,
+            buffer: buf,
+          };
+        }
+      } else if (part.type === 'field') {
+        if (part.fieldname === 'bankAccountId') {
+          const v = String(part.value ?? '').trim();
+          if (v) bankAccountId = v;
+        } else if (part.fieldname === 'paymentDate') {
+          const v = String(part.value ?? '').trim();
+          if (v) paymentDate = v;
+        } else if (part.fieldname === 'cashAmount') {
+          const v = String(part.value ?? '').trim();
+          if (v) cashAmount = v;
+        }
+      }
+    }
+
+    return this.service.settleCycle(tenantId, id, userId, {
+      cashAmount,
+      bankAccountId,
+      paymentDate,
+      file,
+    });
   }
 }

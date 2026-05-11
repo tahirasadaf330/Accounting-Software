@@ -129,6 +129,7 @@ export class ARReportService {
                   id: true,
                   voucherNumber: true,
                   voucherType: true,
+                  currencyCode: true,
                   totalAmount: true,
                   date: true,
                   status: true,
@@ -161,24 +162,6 @@ export class ARReportService {
         }
       }
 
-      // Carry-forward exclusion only applies to APPROVED/PARTIAL cycles — the netting service
-      // embeds those invoices in the cycle net total. Pending cycles haven't been approved yet.
-      for (const cycle of syntheticRowCycles) {
-        if (cycle.status !== NettingCycleStatus.APPROVED && cycle.status !== NettingCycleStatus.PARTIAL) continue;
-        const linkedIds = cycle.invoices.map((i: any) => i.voucherId);
-        const cfVouchers = await this.prisma.voucher.findMany({
-          where: {
-            tenantId,
-            contactId: cycle.contactId,
-            status: VoucherStatus.POSTED,
-            voucherType: { in: [VoucherType.SALES, VoucherType.PURCHASE] },
-            date: { lt: cycle.startDate },
-            ...(linkedIds.length > 0 ? { id: { notIn: linkedIds } } : {}),
-          },
-          select: { id: true },
-        });
-        for (const v of cfVouchers) carryForwardExcludedIds.add(v.id);
-      }
     }
 
     // --- Process regular voucher rows ---
@@ -240,6 +223,7 @@ export class ARReportService {
         contactName: v.contact?.name ?? '—',
         contactType: v.contact?.type ?? null,
         voucherType: VoucherType.SALES,
+        currencyCode: v.currencyCode,
         bankAccountLast4: bankAcct && bankAcct.length >= 4 ? bankAcct.slice(-4) : null,
         date: toDateStr(v.date as unknown as Date)!,
         dueDate: toDateStr(dueDate),
@@ -266,7 +250,6 @@ export class ARReportService {
         const isApprovedOrPartial =
           cycle.status === NettingCycleStatus.APPROVED ||
           cycle.status === NettingCycleStatus.PARTIAL;
-        const linkedIds = cycle.invoices.map((i: any) => i.voucherId);
 
         let displayAmount: Decimal;
 
@@ -291,40 +274,8 @@ export class ARReportService {
             }
           }
 
-          let carryForward = new Decimal(0);
-          const cfVouchers = await this.prisma.voucher.findMany({
-            where: {
-              tenantId,
-              contactId: cycle.contactId,
-              status: VoucherStatus.POSTED,
-              voucherType: { in: [VoucherType.SALES, VoucherType.PURCHASE] },
-              date: { lt: cycle.startDate },
-              ...(linkedIds.length > 0 ? { id: { notIn: linkedIds } } : {}),
-            },
-            select: {
-              voucherType: true,
-              totalAmount: true,
-              invoiceAllocations: {
-                where: { paidAt: { lte: asOfDate } },
-                select: { amount: true },
-              },
-            },
-          });
-
-          for (const cfv of cfVouchers) {
-            const paid = cfv.invoiceAllocations.reduce(
-              (s, a) => s.plus(new Decimal(a.amount.toString())),
-              new Decimal(0),
-            );
-            const remaining = new Decimal(cfv.totalAmount.toString()).minus(paid);
-            if (remaining.greaterThan(0.0001)) {
-              const sign = cfv.voucherType === VoucherType.SALES ? 1 : -1;
-              carryForward = carryForward.plus(remaining.times(sign));
-            }
-          }
-
           const cycleNet = cycleReceivable.minus(cyclePayable);
-          const netTotal = cycleNet.plus(carryForward);
+          const netTotal = cycleNet;
           const absNet = netTotal.abs().toDecimalPlaces(4);
           const isSettled = absNet.lessThanOrEqualTo(0.0001);
           const isReceivable = netTotal.greaterThan(0.0001);
@@ -333,20 +284,33 @@ export class ARReportService {
           if (isSettled && showOutstandingOnly) continue;
           displayAmount = absNet;
         } else {
-          // Pending/Open: show gross SALES outstanding (netting not yet approved)
-          let pendingReceivable = new Decimal(0);
+          // Pending/Open: show net (cycle AR − cycle AP). Same math as approved cycles;
+          // the badge on the row tells the user the netting isn't approved yet.
+          let cycleReceivable = new Decimal(0);
+          let cyclePayable = new Decimal(0);
           for (const inv of cycle.invoices) {
             const v = inv.voucher;
-            if (!v || v.voucherType !== VoucherType.SALES) continue;
+            if (!v) continue;
             const paid = v.invoiceAllocations.reduce(
               (s: Decimal, a: any) => s.plus(new Decimal(a.amount.toString())),
               new Decimal(0),
             );
             const remaining = new Decimal(v.totalAmount.toString()).minus(paid);
-            if (remaining.greaterThan(0)) pendingReceivable = pendingReceivable.plus(remaining);
+            if (remaining.greaterThan(0)) {
+              if (v.voucherType === VoucherType.SALES) {
+                cycleReceivable = cycleReceivable.plus(remaining);
+              } else {
+                cyclePayable = cyclePayable.plus(remaining);
+              }
+            }
           }
-          if (pendingReceivable.lessThanOrEqualTo(0.0001) && showOutstandingOnly) continue;
-          displayAmount = pendingReceivable.toDecimalPlaces(4);
+          const cycleNet = cycleReceivable.minus(cyclePayable);
+          const absNet = cycleNet.abs().toDecimalPlaces(4);
+          const isSettled = absNet.lessThanOrEqualTo(0.0001);
+          const isReceivable = cycleNet.greaterThan(0.0001);
+          if (!isReceivable && !isSettled) continue;
+          if (isSettled && showOutstandingOnly) continue;
+          displayAmount = absNet;
         }
 
         const rawDueDate = isApprovedOrPartial
@@ -387,6 +351,7 @@ export class ARReportService {
               contactName: cycle.contact?.name ?? '—',
               contactType: cycle.contact?.type ?? null,
               voucherType: cv.voucherType,
+              currencyCode: cv.currencyCode,
               date: toDateStr(cv.date as unknown as Date)!,
               dueDate: toDateStr(cvDueDate),
               totalAmount: cvAmt.toFixed(4),
