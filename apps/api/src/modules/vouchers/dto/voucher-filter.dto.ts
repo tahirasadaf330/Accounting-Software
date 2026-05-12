@@ -47,7 +47,10 @@ export class VoucherFilterDto {
   @Max(100)
   limit?: number = 20;
 
-  @ApiPropertyOptional({ default: 'createdAt', enum: ['date', 'voucherNumber', 'totalAmount', 'createdAt'] })
+  @ApiPropertyOptional({
+    default: 'createdAt',
+    enum: ['date', 'voucherNumber', 'voucherType', 'totalAmount', 'status', 'createdAt'],
+  })
   @IsOptional()
   @IsString()
   sortBy?: string = 'createdAt';

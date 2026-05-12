@@ -6,6 +6,14 @@ A running record of features, fixes, and changes per branch / release.
 
 ## `filter` branch — 2026-05-12
 
+### Added — Sortable columns on the Vouchers list
+
+- Five columns on `/dashboard/vouchers` are now clickable to sort ascending / descending: **Date**, **Type**, **Amount**, **Status**, **Created**. (Number, Reference, and Narration remain static — sorting those wasn't a common need and the underlying values are mostly free-text / auto-generated.)
+- First click on a column sorts **descending** (the useful default for dates and amounts), the second click flips to **ascending**, subsequent clicks toggle. The active column shows a filled chevron (▲/▼); inactive sortable columns show a neutral up/down indicator.
+- Switching the sort always resets pagination to page 1 so the user lands on the first results of the new ordering.
+- Backend: `VoucherFilterDto.sortBy` now accepts `date | voucherNumber | voucherType | totalAmount | status | createdAt` (`createdAt` remains the default). `VouchersService.findAll` whitelist was extended to match — unsupported values silently fall back to `createdAt`.
+- Frontend: new in-file `SortableHeader` component renders the sortable header as a button with the sort-state icon; the Vouchers page tracks `sortBy` / `sortOrder` state and re-fetches when either changes.
+
 ### Changed — Bank account last-4 chip moved from invoice rows to contact group header
 
 - The `····1234` chip showing the contact's bank-account last 4 digits previously rendered next to **each individual voucher row** on the AR/AP report. It now renders **once per contact**, next to the contact name and type badge (`Customer` / `Vendor` / `BOTH`) in the Level 1 group header.

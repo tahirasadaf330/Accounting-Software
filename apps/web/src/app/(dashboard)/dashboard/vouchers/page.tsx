@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useDebounced } from '@/lib/useDebounced';
 import { Pagination } from '@/components/Pagination';
-import { Plus, FileText, ChevronDown, ShoppingCart, Receipt, Search, CreditCard, Wallet } from 'lucide-react';
+import { Plus, FileText, ChevronDown, ChevronUp, ChevronsUpDown, ShoppingCart, Receipt, Search, CreditCard, Wallet } from 'lucide-react';
 import { cn } from '@/lib/cn';
 
 interface Voucher {
@@ -54,6 +54,41 @@ const typeLabels: Record<string, string> = {
   DEBIT_NOTE: 'Debit Note',
 };
 
+function SortableHeader({
+  label,
+  field,
+  sortBy,
+  sortOrder,
+  onSort,
+  align = 'left',
+}: {
+  label: string;
+  field: string;
+  sortBy: string;
+  sortOrder: 'asc' | 'desc';
+  onSort: (field: string) => void;
+  align?: 'left' | 'right';
+}) {
+  const isActive = sortBy === field;
+  const Icon = !isActive ? ChevronsUpDown : sortOrder === 'asc' ? ChevronUp : ChevronDown;
+  return (
+    <th className={cn('px-4 py-3 text-xs font-medium uppercase text-gray-500', align === 'right' ? 'text-right' : 'text-left')}>
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className={cn(
+          'inline-flex items-center gap-1 hover:text-gray-700',
+          align === 'right' && 'flex-row-reverse',
+          isActive && 'text-gray-900',
+        )}
+      >
+        {label}
+        <Icon className={cn('h-3.5 w-3.5', !isActive && 'text-gray-400')} />
+      </button>
+    </th>
+  );
+}
+
 export default function VouchersPage() {
   const router = useRouter();
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
@@ -63,9 +98,21 @@ export default function VouchersPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [refreshKey, setRefreshKey] = useState(0);
   const [createDropdownOpen, setCreateDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortOrder('desc');
+    }
+    setPage(1);
+  };
 
   const debouncedSearch = useDebounced(search, 300);
 
@@ -92,8 +139,8 @@ export default function VouchersPage() {
         const params: Record<string, string | number> = {
           page,
           limit: pageSize,
-          sortBy: 'createdAt',
-          sortOrder: 'desc',
+          sortBy,
+          sortOrder,
         };
         if (statusFilter) params.status = statusFilter;
         if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
@@ -115,7 +162,7 @@ export default function VouchersPage() {
     return () => {
       cancelled = true;
     };
-  }, [statusFilter, debouncedSearch, page, pageSize, refreshKey]);
+  }, [statusFilter, debouncedSearch, page, pageSize, sortBy, sortOrder, refreshKey]);
 
   // Re-fetch when the tab regains focus (e.g., after viewing/creating a
   // voucher in another tab) so a freshly created voucher shows up at row 1.
@@ -247,12 +294,12 @@ export default function VouchersPage() {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Number</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Reference</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Type</th>
+                  <SortableHeader label="Date" field="date" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} />
+                  <SortableHeader label="Type" field="voucherType" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} />
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Narration</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Amount</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Created</th>
+                  <SortableHeader label="Amount" field="totalAmount" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} align="right" />
+                  <SortableHeader label="Status" field="status" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} />
+                  <SortableHeader label="Created" field="createdAt" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
