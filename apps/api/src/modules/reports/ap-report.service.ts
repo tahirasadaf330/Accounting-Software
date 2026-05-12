@@ -121,7 +121,7 @@ export class APReportService {
       const nettingCycles = await this.prisma.nettingCycle.findMany({
         where: nettingWhere,
         include: {
-          contact: { select: { id: true, name: true, type: true, paymentTermDays: true } },
+          contact: { select: { id: true, name: true, type: true, paymentTermDays: true, bankAccountNumber: true } },
           invoices: {
             include: {
               voucher: {
@@ -372,6 +372,7 @@ export class APReportService {
           })
           .filter(Boolean);
 
+        const cycleBankAcct = (cycle.contact as any)?.bankAccountNumber ?? null;
         allRows.push({
           voucherId: `netting-${cycle.id}`,
           voucherNumber: `NETTING-${cycle.id.slice(0, 8).toUpperCase()}`,
@@ -379,6 +380,7 @@ export class APReportService {
           contactName: cycle.contact?.name ?? '—',
           contactType: cycle.contact?.type ?? null,
           voucherType: null,
+          bankAccountLast4: cycleBankAcct && cycleBankAcct.length >= 4 ? cycleBankAcct.slice(-4) : null,
           date: toDateStr(cycle.startDate)!,
           dueDate: toDateStr(cycleDueDate),
           totalAmount: displayAmount.toFixed(4),

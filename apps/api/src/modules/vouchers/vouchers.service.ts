@@ -780,7 +780,14 @@ export class VouchersService {
       where.OR = orConditions;
     }
 
-    const allowedSortFields = ['date', 'voucherNumber', 'totalAmount', 'createdAt'];
+    const allowedSortFields = [
+      'date',
+      'voucherNumber',
+      'voucherType',
+      'totalAmount',
+      'status',
+      'createdAt',
+    ];
     const orderField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
 
     const skip = (page - 1) * limit;
