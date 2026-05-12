@@ -4,6 +4,34 @@ A running record of features, fixes, and changes per branch / release.
 
 ---
 
+## `filter` branch — 2026-05-12
+
+### Changed — Bank account last-4 chip moved from invoice rows to contact group header
+
+- The `····1234` chip showing the contact's bank-account last 4 digits previously rendered next to **each individual voucher row** on the AR/AP report. It now renders **once per contact**, next to the contact name and type badge (`Customer` / `Vendor` / `BOTH`) in the Level 1 group header.
+- Rationale: the bank account is a single field on the contact (`Contact.bankAccountNumber`), so per-invoice rendering was redundant — every invoice for the same contact carried the same value. Moving it to the group header removes the visual repetition and surfaces the info one level higher in the hierarchy.
+- Fix: the chip now also appears for **BOTH-type contacts** whose only visible row is the synthetic Netting Settlement (Level 2 synthetic row). Previously the netting-cycle Prisma query didn't select `bankAccountNumber` and the synthetic row didn't emit `bankAccountLast4`, so the chip silently dropped for these contacts even when a bank number was saved.
+
+### Backend
+
+- `apps/api/src/modules/reports/ar-report.service.ts` and `apps/api/src/modules/reports/ap-report.service.ts`:
+  - Added `bankAccountNumber` to the contact `select` on the `nettingCycle.findMany(...)` include.
+  - Synthetic netting-settlement row now emits `bankAccountLast4` (derived the same way as regular voucher rows: `bankAcct.slice(-4)` when length ≥ 4, else `null`).
+
+### Frontend
+
+- `apps/web/src/app/(dashboard)/dashboard/reports/page.tsx`:
+  - `groupedContacts` now hoists `bankAccountLast4` from the first row that has it onto the group object.
+  - Level 1 contact header renders the `····XXXX` chip after the type badge.
+  - Removed the duplicate chip from Level 2 voucher rows.
+
+### Notes
+
+- No schema changes, no migrations.
+- Regular voucher rows (`bankAccountLast4` on each row) are still emitted by the backend — only the frontend rendering moved. The field on row payloads is now effectively unused by the UI but kept on the API contract for backward compatibility.
+
+---
+
 ## `partial-payment` branch — 2026-05-11
 
 ### Added — Partial payment on AR/AP Mark as Paid

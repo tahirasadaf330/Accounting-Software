@@ -285,11 +285,15 @@ function ARAPReportView({
           contactId: row.contactId,
           contactName: row.contactName,
           contactType: row.contactType ?? 'CUSTOMER',
+          bankAccountLast4: null,
           totalOutstanding: 0,
           rows: [],
         });
       }
       const group = map.get(key)!;
+      if (!group.bankAccountLast4 && row.bankAccountLast4) {
+        group.bankAccountLast4 = row.bankAccountLast4;
+      }
       group.totalOutstanding += Number(row.outstandingAmount);
       group.rows.push(row);
     }
@@ -556,6 +560,9 @@ function ARAPReportView({
                               {CONTACT_TYPE_BADGE[group.contactType].label}
                             </span>
                           )}
+                          {group.bankAccountLast4 && (
+                            <span className="rounded bg-gray-200 px-1.5 py-0.5 font-mono text-[11px] text-gray-700">····{group.bankAccountLast4}</span>
+                          )}
                         </button>
                         <span className={cn('text-sm font-semibold', Number(group.totalOutstanding) > 0 ? 'text-red-700' : 'text-green-600')}>
                           {formatAmount(group.totalOutstanding)}
@@ -615,9 +622,6 @@ function ARAPReportView({
                                   </Link>
                                   {isPendingNetting && (
                                     <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700">Pending Netting</span>
-                                  )}
-                                  {row.bankAccountLast4 && (
-                                    <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-600">····{row.bankAccountLast4}</span>
                                   )}
                                 </>
                               )}
