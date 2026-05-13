@@ -19,6 +19,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { Role } from '@prisma/client';
 import * as fs from 'fs';
 import { VouchersService } from './vouchers.service';
+import { VoucherImportService } from './voucher-import.service';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { CreateVoucherWithAllocationsDto } from './dto/create-voucher-with-allocations.dto';
 import { CreateVoucherWithNettingDto } from './dto/create-voucher-with-netting.dto';
@@ -33,7 +34,10 @@ import { Roles } from '../../common/decorators/roles.decorator';
 @ApiBearerAuth()
 @Controller('vouchers')
 export class VouchersController {
-  constructor(private readonly vouchersService: VouchersService) {}
+  constructor(
+    private readonly vouchersService: VouchersService,
+    private readonly voucherImportService: VoucherImportService,
+  ) {}
 
   @Post()
   @ApiOperation({ summary: 'Create a new voucher (auto-posted)' })
@@ -182,6 +186,84 @@ export class VouchersController {
     @CurrentUser('id') userId: string,
   ) {
     return this.vouchersService.reverse(tenantId, id, userId);
+  }
+
+  // ─── Excel Import Endpoints ───────────────────────────────────
+
+  @Post('import/purchase-invoices/preview')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary:
+      'Preview parsing/validation of an Excel workbook of purchase invoices for a given vendor',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Preview result: totalRows, valid rows, invalid rows with errors',
+  })
+  @HttpCode(HttpStatus.OK)
+  async previewPurchaseInvoiceImport(
+    @TenantId() tenantId: string,
+    @Req() req: FastifyRequest,
+  ) {
+    const { fileBuffer, contactId } = await this.readImportMultipart(req);
+    return this.voucherImportService.previewImport(
+      tenantId,
+      contactId,
+      fileBuffer,
+    );
+  }
+
+  @Post('import/purchase-invoices/commit')
+  @ApiConsumes('multipart/form-data')
+  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @ApiOperation({
+    summary:
+      'Commit an Excel workbook of purchase invoices for a given vendor (creates PURCHASE vouchers)',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Commit result: created count and per-row failure list',
+  })
+  @HttpCode(HttpStatus.CREATED)
+  async commitPurchaseInvoiceImport(
+    @TenantId() tenantId: string,
+    @CurrentUser('id') userId: string,
+    @Req() req: FastifyRequest,
+  ) {
+    const { fileBuffer, contactId } = await this.readImportMultipart(req);
+    return this.voucherImportService.commitImport(
+      tenantId,
+      userId,
+      contactId,
+      fileBuffer,
+    );
+  }
+
+  private async readImportMultipart(
+    req: FastifyRequest,
+  ): Promise<{ fileBuffer: Buffer; contactId: string }> {
+    const parts = req.parts();
+    let fileBuffer: Buffer | undefined;
+    let contactId = '';
+
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of part.file) chunks.push(chunk);
+        const buf = Buffer.concat(chunks);
+        if (buf.length > 0) fileBuffer = buf;
+      } else if (part.type === 'field' && part.fieldname === 'contactId') {
+        contactId = String(part.value ?? '').trim();
+      }
+    }
+
+    if (!fileBuffer) {
+      throw new BadRequestException('No file uploaded (expected field "file")');
+    }
+    if (!contactId) {
+      throw new BadRequestException('Missing "contactId" field');
+    }
+    return { fileBuffer, contactId };
   }
 
   // ─── Attachment Endpoints ─────────────────────────────────────
