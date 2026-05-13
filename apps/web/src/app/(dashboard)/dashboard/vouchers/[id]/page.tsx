@@ -122,7 +122,7 @@ const voucherSchema = z
   .object({
     date: z.string().min(1, 'Date is required'),
     narration: z.string().min(1, 'Narration is required').max(1000, 'Narration must be 1000 characters or less'),
-    reference: z.string().max(255, 'Reference must be 255 characters or less').optional(),
+    reference: z.string().optional(),
     lineItems: z.array(lineItemSchema).min(2, 'At least 2 line items are required'),
   })
   .superRefine((data, ctx) => {

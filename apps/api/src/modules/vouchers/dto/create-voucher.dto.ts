@@ -71,7 +71,6 @@ export class CreateVoucherDto {
   @ApiPropertyOptional({ example: 'INV-2026-001' })
   @IsOptional()
   @IsString()
-  @MaxLength(255)
   reference?: string;
 
   @ApiPropertyOptional({ example: 'USD', default: 'USD' })

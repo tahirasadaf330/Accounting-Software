@@ -28,7 +28,6 @@ export class UpdateVoucherDto {
   @ApiPropertyOptional({ example: 'INV-2026-002' })
   @IsOptional()
   @IsString()
-  @MaxLength(255)
   reference?: string;
 
   @ApiPropertyOptional({ example: 'USD' })

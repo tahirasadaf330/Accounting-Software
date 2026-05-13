@@ -361,7 +361,7 @@ model Voucher {
   periodStart     DateTime?     @db.Date
   periodEnd       DateTime?     @db.Date
   narration       String
-  reference       String?       @db.VarChar(255)
+  reference       String?
   totalAmount     Decimal       @db.Decimal(20, 4)
   currencyCode    String        @default("USD") @db.VarChar(3)
   exchangeRate    Decimal       @default(1) @db.Decimal(18, 8)
