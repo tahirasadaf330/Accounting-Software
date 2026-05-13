@@ -20,6 +20,7 @@ import { Role } from '@prisma/client';
 import * as fs from 'fs';
 import { VouchersService } from './vouchers.service';
 import { VoucherImportService } from './voucher-import.service';
+import { PaymentVoucherImportService } from './payment-voucher-import.service';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { CreateVoucherWithAllocationsDto } from './dto/create-voucher-with-allocations.dto';
 import { CreateVoucherWithNettingDto } from './dto/create-voucher-with-netting.dto';
@@ -37,6 +38,7 @@ export class VouchersController {
   constructor(
     private readonly vouchersService: VouchersService,
     private readonly voucherImportService: VoucherImportService,
+    private readonly paymentVoucherImportService: PaymentVoucherImportService,
   ) {}
 
   @Post()
@@ -232,6 +234,49 @@ export class VouchersController {
   ) {
     const { fileBuffer, contactId } = await this.readImportMultipart(req);
     return this.voucherImportService.commitImport(
+      tenantId,
+      userId,
+      contactId,
+      fileBuffer,
+    );
+  }
+
+  @Post('import/payment-vouchers/preview')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary:
+      'Preview parsing/validation of an Excel workbook of payment vouchers for a given vendor',
+  })
+  @ApiResponse({ status: 200, description: 'Preview result' })
+  @HttpCode(HttpStatus.OK)
+  async previewPaymentVoucherImport(
+    @TenantId() tenantId: string,
+    @Req() req: FastifyRequest,
+  ) {
+    const { fileBuffer, contactId } = await this.readImportMultipart(req);
+    return this.paymentVoucherImportService.previewImport(
+      tenantId,
+      contactId,
+      fileBuffer,
+    );
+  }
+
+  @Post('import/payment-vouchers/commit')
+  @ApiConsumes('multipart/form-data')
+  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @ApiOperation({
+    summary:
+      'Commit an Excel workbook of payment vouchers (creates PAYMENT vouchers + allocations)',
+  })
+  @ApiResponse({ status: 201, description: 'Commit result' })
+  @HttpCode(HttpStatus.CREATED)
+  async commitPaymentVoucherImport(
+    @TenantId() tenantId: string,
+    @CurrentUser('id') userId: string,
+    @Req() req: FastifyRequest,
+  ) {
+    const { fileBuffer, contactId } = await this.readImportMultipart(req);
+    return this.paymentVoucherImportService.commitImport(
       tenantId,
       userId,
       contactId,

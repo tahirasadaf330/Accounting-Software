@@ -9,7 +9,7 @@ import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { formatCurrency } from '@/lib/formatCurrency';
 import { useAuthStore } from '@/stores/auth.store';
-import { ArrowLeft, ChevronDown, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Plus, Trash2, Upload } from 'lucide-react';
 import ContactSelector from '../invoice/ContactSelector';
 import FileDropzone, { PendingFile } from '../invoice/FileDropzone';
 import InvoiceAllocationPanel, {
@@ -18,6 +18,7 @@ import InvoiceAllocationPanel, {
 import NettingSettlementPanel, {
   NettingAllocationSelection,
 } from './NettingSettlementPanel';
+import ImportPaymentVouchersModal from './ImportPaymentVouchersModal';
 
 // --- Types ---
 
@@ -236,6 +237,7 @@ export default function NewVoucherPage() {
   const [allocations, setAllocations] = useState<AllocationSelection[]>([]);
   const [nettingAllocations, setNettingAllocations] = useState<NettingAllocationSelection[]>([]);
   const [files, setFiles] = useState<PendingFile[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
   const lastAutoReferenceRef = useRef('');
 
   const {
@@ -562,7 +564,23 @@ export default function NewVoucherPage() {
           <h1 className="text-2xl font-bold text-gray-900">New Voucher</h1>
           <p className="mt-1 text-sm text-gray-600">Create a new financial transaction</p>
         </div>
+        {searchParams.get('type') === 'PAYMENT' && (
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            className="ml-auto flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-1.5 text-sm font-medium text-primary-700 hover:bg-primary-100"
+          >
+            <Upload className="h-4 w-4" />
+            Import from Excel
+          </button>
+        )}
       </div>
+
+      <ImportPaymentVouchersModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onCompleted={() => router.push('/dashboard/vouchers')}
+      />
 
       {/* API Error Banner */}
       {apiError && (
