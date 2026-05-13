@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, FileText, Loader2, Upload } from 'lucide-react';
+import { ArrowLeft, FileText, Loader2 } from 'lucide-react';
 import { z } from 'zod';
 import { cn } from '@/lib/cn';
 import { api, ApiError } from '@/lib/api';
@@ -11,7 +11,6 @@ import ContactSelector from '../invoice/ContactSelector';
 import InvoiceLineItems, { InvoiceLine } from '../invoice/InvoiceLineItems';
 import FileDropzone, { PendingFile } from '../invoice/FileDropzone';
 import { PeriodQuickPick } from '@/components/PeriodQuickPick';
-import ImportInvoicesModal from './ImportInvoicesModal';
 
 interface Account {
   id: string;
@@ -73,7 +72,6 @@ export default function PurchaseInvoicePage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -236,20 +234,7 @@ export default function PurchaseInvoicePage() {
           <FileText className="h-5 w-5 text-orange-600" />
           <h1 className="text-xl font-semibold text-gray-900">Purchase Invoice</h1>
         </div>
-        <button
-          type="button"
-          onClick={() => setImportOpen(true)}
-          className="ml-auto flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-sm font-medium text-orange-700 hover:bg-orange-100"
-        >
-          <Upload className="h-4 w-4" />
-          Import from Excel
-        </button>
       </div>
-
-      <ImportInvoicesModal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-      />
 
       {apiError && (
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
