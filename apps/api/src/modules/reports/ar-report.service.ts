@@ -92,7 +92,7 @@ export class ARReportService {
     const vouchers = await this.prisma.voucher.findMany({
       where,
       include: {
-        contact: { select: { id: true, name: true, paymentTermDays: true, bankAccountNumber: true, type: true } },
+        contact: { select: { id: true, name: true, paymentTermDays: true, bankAccountNumber: true, paymentMethod: true, type: true } },
         invoiceAllocations: {
           where: { paidAt: { lte: asOfDate } },
           select: { amount: true },
@@ -121,7 +121,7 @@ export class ARReportService {
       const nettingCycles = await this.prisma.nettingCycle.findMany({
         where: nettingWhere,
         include: {
-          contact: { select: { id: true, name: true, type: true, paymentTermDays: true, bankAccountNumber: true } },
+          contact: { select: { id: true, name: true, type: true, paymentTermDays: true, bankAccountNumber: true, paymentMethod: true } },
           invoices: {
             include: {
               voucher: {
@@ -225,6 +225,7 @@ export class ARReportService {
         voucherType: VoucherType.SALES,
         currencyCode: v.currencyCode,
         bankAccountLast4: bankAcct && bankAcct.length >= 4 ? bankAcct.slice(-4) : null,
+        paymentMethod: v.contact?.paymentMethod ?? null,
         date: toDateStr(v.date as unknown as Date)!,
         dueDate: toDateStr(dueDate),
         totalAmount: invoiceAmount.toFixed(4),
@@ -381,6 +382,7 @@ export class ARReportService {
           contactType: cycle.contact?.type ?? null,
           voucherType: null,
           bankAccountLast4: cycleBankAcct && cycleBankAcct.length >= 4 ? cycleBankAcct.slice(-4) : null,
+          paymentMethod: (cycle.contact as any)?.paymentMethod ?? null,
           date: toDateStr(cycle.startDate)!,
           dueDate: toDateStr(cycleDueDate),
           totalAmount: displayAmount.toFixed(4),

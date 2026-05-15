@@ -286,6 +286,7 @@ function ARAPReportView({
           contactName: row.contactName,
           contactType: row.contactType ?? 'CUSTOMER',
           bankAccountLast4: null,
+          paymentMethod: null,
           totalOutstanding: 0,
           rows: [],
         });
@@ -293,6 +294,9 @@ function ARAPReportView({
       const group = map.get(key)!;
       if (!group.bankAccountLast4 && row.bankAccountLast4) {
         group.bankAccountLast4 = row.bankAccountLast4;
+      }
+      if (!group.paymentMethod && row.paymentMethod) {
+        group.paymentMethod = row.paymentMethod;
       }
       group.totalOutstanding += Number(row.outstandingAmount);
       group.rows.push(row);
@@ -562,6 +566,9 @@ function ARAPReportView({
                           )}
                           {group.bankAccountLast4 && (
                             <span className="rounded bg-gray-200 px-1.5 py-0.5 font-mono text-[11px] text-gray-700">····{group.bankAccountLast4}</span>
+                          )}
+                          {group.paymentMethod && (
+                            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">{group.paymentMethod}</span>
                           )}
                         </button>
                         <span className={cn('text-sm font-semibold', Number(group.totalOutstanding) > 0 ? 'text-red-700' : 'text-green-600')}>
