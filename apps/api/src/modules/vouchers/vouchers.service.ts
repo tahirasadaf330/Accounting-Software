@@ -1318,6 +1318,12 @@ export class VouchersService {
           `Cannot reverse voucher in ${original.status} status. Only POSTED vouchers can be reversed.`,
         );
       }
+      
+      if (original.reversedFromId) {
+        throw new ConflictException(
+          `Cannot reverse voucher ${original.voucherNumber}: reversal entries cannot be reversed.`,
+        );
+      }
 
       if (!original.journalEntry) {
         throw new ConflictException(
