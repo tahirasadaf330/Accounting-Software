@@ -408,6 +408,7 @@ export class ContactsService {
       contactName: contact.name,
       contactType: contact.type,
       ...statement,
+      currency: contact.currencyCode,
     };
   }
 

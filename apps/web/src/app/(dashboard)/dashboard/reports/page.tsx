@@ -266,6 +266,7 @@ function ARAPReportView({
   const title = isAR ? 'Accounts Receivable (AR) Report' : 'Accounts Payable (AP) Report';
   const contactLabel = isAR ? 'Customer' : 'Vendor';
   const hasNettingAdjustment = Number(data.summary?.nettingAdjustment) > 0;
+  formatAmount = (v: any) => formatCurrency(v, data.currency ?? 'USD');
 
   const [expandedContacts, setExpandedContacts] = useState<Set<string>>(new Set());
   const [expandedCycles, setExpandedCycles] = useState<Set<string>>(new Set());
@@ -287,6 +288,7 @@ function ARAPReportView({
           contactType: row.contactType ?? 'CUSTOMER',
           bankAccountLast4: null,
           paymentMethod: null,
+          contactCurrencyCode: null,
           totalOutstanding: 0,
           rows: [],
         });
@@ -297,6 +299,9 @@ function ARAPReportView({
       }
       if (!group.paymentMethod && row.paymentMethod) {
         group.paymentMethod = row.paymentMethod;
+      }
+      if (!group.contactCurrencyCode && row.contactCurrencyCode) {
+        group.contactCurrencyCode = row.contactCurrencyCode;
       }
       group.totalOutstanding += Number(row.outstandingAmount);
       group.rows.push(row);
@@ -543,6 +548,7 @@ function ARAPReportView({
             {filteredGroups.map((group) => {
               const isExpanded = expandedContacts.has(group.contactId);
               const firstPayable = getFirstPayable(group);
+              const fmt = (v: any) => formatCurrency(v, group.contactCurrencyCode ?? data.currency ?? 'USD');
 
               return (
                 <Fragment key={group.contactId}>
@@ -572,7 +578,7 @@ function ARAPReportView({
                           )}
                         </button>
                         <span className={cn('text-sm font-semibold', Number(group.totalOutstanding) > 0 ? 'text-red-700' : 'text-green-600')}>
-                          {formatAmount(group.totalOutstanding)}
+                          {fmt(group.totalOutstanding)}
                         </span>
                       </div>
                     </td>
@@ -636,11 +642,11 @@ function ARAPReportView({
                           </td>
                           <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.date}</td>
                           <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.dueDate ?? '—'}</td>
-                          <td className="whitespace-nowrap px-4 py-2 text-right text-gray-900">{formatAmount(row.totalAmount)}</td>
-                          <td className="whitespace-nowrap px-4 py-2 text-right text-blue-700">{formatAmount(row.paidAmount)}</td>
+                          <td className="whitespace-nowrap px-4 py-2 text-right text-gray-900">{fmt(row.totalAmount)}</td>
+                          <td className="whitespace-nowrap px-4 py-2 text-right text-blue-700">{fmt(row.paidAmount)}</td>
                           <td className="whitespace-nowrap px-4 py-2 text-right font-semibold">
                             <span className={Number(row.outstandingAmount) > 0 ? 'text-red-700' : 'text-green-600'}>
-                              {formatAmount(row.outstandingAmount)}
+                              {fmt(row.outstandingAmount)}
                             </span>
                           </td>
                           <td className="whitespace-nowrap px-4 py-2">
@@ -731,11 +737,11 @@ function ARAPReportView({
                             </td>
                             <td className="whitespace-nowrap px-4 py-1.5 text-xs text-gray-500">{inv.date}</td>
                             <td className="whitespace-nowrap px-4 py-1.5 text-xs text-gray-500">{inv.dueDate ?? '—'}</td>
-                            <td className="whitespace-nowrap px-4 py-1.5 text-right text-xs text-gray-900">{formatAmount(inv.totalAmount)}</td>
-                            <td className="whitespace-nowrap px-4 py-1.5 text-right text-xs text-blue-700">{formatAmount(inv.paidAmount)}</td>
+                            <td className="whitespace-nowrap px-4 py-1.5 text-right text-xs text-gray-900">{fmt(inv.totalAmount)}</td>
+                            <td className="whitespace-nowrap px-4 py-1.5 text-right text-xs text-blue-700">{fmt(inv.paidAmount)}</td>
                             <td className="whitespace-nowrap px-4 py-1.5 text-right text-xs font-semibold">
                               <span className={Number(inv.outstandingAmount) > 0 ? 'text-red-700' : 'text-green-600'}>
-                                {formatAmount(inv.outstandingAmount)}
+                                {fmt(inv.outstandingAmount)}
                               </span>
                             </td>
                             <td className="whitespace-nowrap px-4 py-1.5">
@@ -802,7 +808,7 @@ function ARAPReportView({
                           <span className="text-xs font-medium text-gray-500">Total — {group.contactName}</span>
                           <div className="flex items-center gap-4">
                             <span className={cn('text-sm font-semibold', Number(group.totalOutstanding) > 0 ? 'text-red-700' : 'text-green-600')}>
-                              {formatAmount(group.totalOutstanding)}
+                              {fmt(group.totalOutstanding)}
                             </span>
                             {firstPayable && (
                               <button

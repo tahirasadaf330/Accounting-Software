@@ -6,7 +6,7 @@ import { X, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import CurrencySelect from '@/components/CurrencySelect';
 
-type PaymentMethod = 'WIRE' | 'ACH';
+type PaymentMethod = 'WIRE' | 'ACH' | 'USDT';
 type AccountClassification = 'PREPAYMENT' | 'POSTPAYMENT';
 
 function MultiSelectDropdown({
@@ -608,7 +608,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Method of Payment</label>
                 <div className="flex items-center gap-4">
-                  {(['WIRE', 'ACH'] as const).map((m) => (
+                  {(['WIRE', 'ACH', 'USDT'] as const).map((m) => (
                     <label key={m} className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
                       <input
                         type="radio"

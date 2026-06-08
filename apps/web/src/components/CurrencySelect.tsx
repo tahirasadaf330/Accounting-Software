@@ -30,6 +30,7 @@ export default function CurrencySelect({
   className,
   includeBlank,
 }: Props) {
+  const ALLOWED_CURRENCIES = ['USD', 'EUR', 'GBP'];
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -39,7 +40,7 @@ export default function CurrencySelect({
       try {
         const data = await api.get<Currency[] | { data: Currency[] }>('/currencies');
         const list = Array.isArray(data) ? data : data.data || [];
-        if (!cancelled) setCurrencies(list.filter((c) => c.isActive));
+        if (!cancelled) setCurrencies(list.filter((c) => c.isActive && ALLOWED_CURRENCIES.includes(c.code)));
       } catch {
         if (!cancelled) setCurrencies([]);
       } finally {
