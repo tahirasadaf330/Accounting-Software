@@ -92,7 +92,7 @@ export class ARReportService {
     const vouchers = await this.prisma.voucher.findMany({
       where,
       include: {
-        contact: { select: { id: true, name: true, paymentTermDays: true, bankAccountNumber: true, paymentMethod: true, type: true } },
+        contact: { select: { id: true, name: true, paymentTermDays: true, bankAccountNumber: true, paymentMethod: true, type: true, currencyCode: true } },
         invoiceAllocations: {
           where: { paidAt: { lte: asOfDate } },
           select: { amount: true },
@@ -121,7 +121,7 @@ export class ARReportService {
       const nettingCycles = await this.prisma.nettingCycle.findMany({
         where: nettingWhere,
         include: {
-          contact: { select: { id: true, name: true, type: true, paymentTermDays: true, bankAccountNumber: true, paymentMethod: true } },
+          contact: { select: { id: true, name: true, type: true, paymentTermDays: true, bankAccountNumber: true, paymentMethod: true, currencyCode: true } },
           invoices: {
             include: {
               voucher: {
@@ -226,6 +226,7 @@ export class ARReportService {
         currencyCode: v.currencyCode,
         bankAccountLast4: bankAcct && bankAcct.length >= 4 ? bankAcct.slice(-4) : null,
         paymentMethod: v.contact?.paymentMethod ?? null,
+        contactCurrencyCode: (v.contact as any)?.currencyCode ?? null,
         date: toDateStr(v.date as unknown as Date)!,
         dueDate: toDateStr(dueDate),
         totalAmount: invoiceAmount.toFixed(4),
@@ -383,6 +384,7 @@ export class ARReportService {
           voucherType: null,
           bankAccountLast4: cycleBankAcct && cycleBankAcct.length >= 4 ? cycleBankAcct.slice(-4) : null,
           paymentMethod: (cycle.contact as any)?.paymentMethod ?? null,
+          contactCurrencyCode: (cycle.contact as any)?.currencyCode ?? null,
           date: toDateStr(cycle.startDate)!,
           dueDate: toDateStr(cycleDueDate),
           totalAmount: displayAmount.toFixed(4),
@@ -405,6 +407,21 @@ export class ARReportService {
 
     const nettingAdjustment = grossOutstanding.minus(totalOutstanding).abs();
 
+    let reportCurrency = 'USD';
+    if (filters.contactId) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: filters.contactId, tenantId },
+        select: { currencyCode: true },
+      });
+      reportCurrency = contact?.currencyCode ?? 'USD';
+    } else {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { baseCurrency: true },
+      });
+      reportCurrency = tenant?.baseCurrency ?? 'USD';
+    }
+
     const rows = showOutstandingOnly
       ? allRows.filter((r) => new Decimal(r.outstandingAmount).greaterThan(0))
       : allRows;
@@ -412,7 +429,7 @@ export class ARReportService {
     return {
       reportType: 'AR' as const,
       asOfDate: toDateStr(asOfDate)!,
-      currency: 'USD',
+      currency: reportCurrency,
       rows,
       summary: {
         totalInvoiced: totalInvoiced.toFixed(4),

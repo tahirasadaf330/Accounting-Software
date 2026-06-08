@@ -78,7 +78,7 @@ export default function ContactStatementPage() {
     }
   }, [contactId]);
 
-  const formatAmount = (amount: string | number) => formatCurrency(amount, baseCurrency);
+  const formatAmount = (amount: string | number) => formatCurrency(amount, statement?.currency ?? baseCurrency);
 
   const natureColor = (nature: BalanceNature) => {
     if (nature === 'Receivable') return 'text-green-700 bg-green-50 ring-green-600/20';

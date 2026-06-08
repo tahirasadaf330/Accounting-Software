@@ -689,6 +689,7 @@ model ReconciliationMatch {
 enum PaymentMethod {
   WIRE
   ACH
+  USDT
 }
 
 enum AccountClassification {
