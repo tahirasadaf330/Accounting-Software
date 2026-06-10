@@ -43,7 +43,7 @@ export class NettingCyclesService {
     });
     if (!contact) throw new NotFoundException('Contact not found');
 
-    const startDate = new Date(dto.startDate);
+    const startDate = dto.startDate ? new Date(dto.startDate) : new Date('1900-01-01');
     const endDate = new Date(dto.endDate);
     const dueDate = new Date(endDate);
     const termDays = contact.paymentTermDays || 1;
@@ -886,12 +886,9 @@ export class NettingCyclesService {
     return user?.id || '';
   }
 
-  async getUnpaidInvoicesForRange(tenantId: string, contactId: string, startDate: string, endDate: string) {
-    // Filter by invoice BILLING PERIOD (periodStart/periodEnd), not invoice/posted date.
-    // An invoice appears if its billing period fully falls within the selected range:
-    //   periodStart >= startDate AND periodEnd <= endDate
-    const rangeStart = new Date(startDate);
+  async getUnpaidInvoicesForRange(tenantId: string, contactId: string, startDate: string | undefined, endDate: string) {
     const rangeEnd = new Date(endDate);
+    const periodStartFilter = startDate ? { gte: new Date(startDate) } : undefined;
 
     const invoices = await this.prisma.voucher.findMany({
       where: {
@@ -899,7 +896,7 @@ export class NettingCyclesService {
         contactId,
         status: VoucherStatus.POSTED,
         voucherType: { in: [VoucherType.SALES, VoucherType.PURCHASE] },
-        periodStart: { gte: rangeStart },
+        ...(periodStartFilter ? { periodStart: periodStartFilter } : {}),
         periodEnd: { lte: rangeEnd },
       },
       select: {

@@ -25,6 +25,7 @@ import { exportInvoiceReportExcel } from './exportInvoiceReportExcel';
 import ContactQuickViewModal from '@/components/ContactQuickViewModal';
 import CommentsModal from '@/components/CommentsModal';
 import MarkPaidModal from '@/components/MarkPaidModal';
+import SelectInvoicesToPayModal from '@/components/SelectInvoicesToPayModal';
 import NettingSettlementModal from '@/components/NettingSettlementModal';
 
 interface Account {
@@ -273,6 +274,7 @@ function ARAPReportView({
   const [contactModalId, setContactModalId] = useState<string | null>(null);
   const [commentsVoucher, setCommentsVoucher] = useState<{ id: string; number: string } | null>(null);
   const [markPaidVoucher, setMarkPaidVoucher] = useState<{ id: string; number: string; alreadyPaid: boolean; outstandingAmount?: string; currencyCode?: string } | null>(null);
+  const [selectPayInvoices, setSelectPayInvoices] = useState<Array<{ voucherId: string; voucherNumber: string; outstandingAmount: string; currencyCode?: string }> | null>(null);
   const [settlementCycle, setSettlementCycle] = useState<{ id: string; contactName: string; cycleLabel: string; arTotal: string; apTotal: string; currencyCode?: string } | null>(null);
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
 
@@ -810,16 +812,21 @@ function ARAPReportView({
                             <span className={cn('text-sm font-semibold', Number(group.totalOutstanding) > 0 ? 'text-red-700' : 'text-green-600')}>
                               {fmt(group.totalOutstanding)}
                             </span>
-                            {firstPayable && (
-                              <button
-                                type="button"
-                                onClick={() => setMarkPaidVoucher(firstPayable)}
-                                className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
-                              >
-                                <CheckCircle2 className="h-3 w-3" />
-                                Mark Paid All
-                              </button>
-                            )}
+                            {(() => {
+                              const payableRows = group.rows
+                                .filter((r: any) => Number(r.outstandingAmount) > 0 && !r.isNettingSettlement && !PENDING_NETTING_STATUSES.has(r.nettingCycleStatus))
+                                .map((r: any) => ({ voucherId: r.voucherId, voucherNumber: r.voucherNumber, outstandingAmount: r.outstandingAmount, currencyCode: r.currencyCode }));
+                              return payableRows.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectPayInvoices(payableRows)}
+                                  className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                                >
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  Select Invoices to Pay
+                                </button>
+                              ) : null;
+                            })()}
                           </div>
                         </div>
                       </td>
@@ -855,6 +862,13 @@ function ARAPReportView({
         currencyCode={markPaidVoucher?.currencyCode}
         onClose={() => setMarkPaidVoucher(null)}
         onSuccess={() => onRefresh?.()}
+      />
+
+      <SelectInvoicesToPayModal
+        open={selectPayInvoices != null}
+        invoices={selectPayInvoices ?? []}
+        onClose={() => setSelectPayInvoices(null)}
+        onSuccess={() => { onRefresh?.(); setSelectPayInvoices(null); }}
       />
 
       <NettingSettlementModal

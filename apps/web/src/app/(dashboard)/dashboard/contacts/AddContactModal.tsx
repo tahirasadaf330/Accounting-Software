@@ -112,6 +112,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
   const [creditLimit, setCreditLimit] = useState('');
   const [minThreshold, setMinThreshold] = useState('');
   const [paymentTermDays, setPaymentTermDays] = useState('');
+  const [invoiceTerms, setInvoiceTerms] = useState('');
   const [billingStartDate, setBillingStartDate] = useState('');
   const [currencyCode, setCurrencyCode] = useState('USD');
   const [bankBeneficiaryName, setBankBeneficiaryName] = useState('');
@@ -265,6 +266,7 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       if (creditLimit.trim()) body.creditLimit = Number(creditLimit);
       if (minThreshold.trim()) body.minThreshold = Number(minThreshold);
       if (paymentTermDays.trim()) body.paymentTermDays = parseInt(paymentTermDays, 10);
+      if (invoiceTerms.trim()) body.invoiceTerms = invoiceTerms.trim();
       if (!autoCreateAccount && accountId) body.accountId = accountId;
       if (currencyCode) body.currencyCode = currencyCode;
       if (bankBeneficiaryName.trim()) body.bankBeneficiaryName = bankBeneficiaryName.trim();
@@ -554,6 +556,19 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                     Vouchers, receipts, and payments below this amount will be blocked.
                   </p>
                 )}
+              </div>
+
+              {/* Invoice Terms */}
+              <div>
+                <label htmlFor="invoiceTerms" className="mb-1 block text-sm font-medium text-gray-700">Invoice Terms</label>
+                <textarea
+                  id="invoiceTerms"
+                  rows={3}
+                  value={invoiceTerms}
+                  onChange={(e) => setInvoiceTerms(e.target.value)}
+                  placeholder="e.g. Payment due within 30 days of invoice date."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 resize-none"
+                />
               </div>
 
               {/* Billing Start Date */}

@@ -147,6 +147,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
   const [creditLimit, setCreditLimit] = useState('');
   const [minThreshold, setMinThreshold] = useState('');
   const [paymentTermDays, setPaymentTermDays] = useState('');
+  const [invoiceTerms, setInvoiceTerms] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [amApprovalRequired, setAmApprovalRequired] = useState(false);
   const [billingStartDate, setBillingStartDate] = useState('');
@@ -200,6 +201,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
       setCreditLimit(contact.creditLimit || '');
       setMinThreshold(contact.minThreshold || '');
       setPaymentTermDays(contact.paymentTermDays?.toString() || '');
+      setInvoiceTerms((contact as any).invoiceTerms || '');
       setIsActive(contact.isActive);
       setAmApprovalRequired(contact.amApprovalRequired ?? false);
       setBillingStartDate((contact as any).billingStartDate || '');
@@ -281,6 +283,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
         isActive,
         billingStartDate: billingStartDate || null,
         currencyCode: currencyCode || 'USD',
+        invoiceTerms: invoiceTerms.trim() || null,
         bankBeneficiaryName: bankBeneficiaryName.trim() || null,
         bankName: bankName.trim() || null,
         bankAccountNumber: bankAccountNumber.trim() || null,
@@ -522,6 +525,19 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
                     Vouchers, receipts, and payments below this amount will be blocked.
                   </p>
                 )}
+              </div>
+
+              {/* Invoice Terms */}
+              <div>
+                <label htmlFor="edit-invoiceTerms" className="mb-1 block text-sm font-medium text-gray-700">Invoice Terms</label>
+                <textarea
+                  id="edit-invoiceTerms"
+                  rows={3}
+                  value={invoiceTerms}
+                  onChange={(e) => setInvoiceTerms(e.target.value)}
+                  placeholder="e.g. Payment due within 30 days of invoice date."
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 resize-none"
+                />
               </div>
 
               {/* Billing Start Date */}

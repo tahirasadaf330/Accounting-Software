@@ -58,7 +58,7 @@ export class NettingCyclesController {
   @Get('unpaid-invoices')
   @ApiOperation({ summary: 'Get unpaid invoices for a contact in date range' })
   @ApiQuery({ name: 'contactId', required: true })
-  @ApiQuery({ name: 'startDate', required: true })
+  @ApiQuery({ name: 'startDate', required: false })
   @ApiQuery({ name: 'endDate', required: true })
   getUnpaidInvoices(
     @TenantId() tenantId: string,
