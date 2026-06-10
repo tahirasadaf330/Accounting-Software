@@ -131,7 +131,7 @@ export class VouchersService {
     totalAmount: Decimal,
     voucherType: VoucherType,
   ): Promise<void> {
-    if (voucherType !== VoucherType.PAYMENT && voucherType !== VoucherType.RECEIPT) return;
+    if (voucherType !== VoucherType.PAYMENT) return;
     if (!contactId) return;
     const contact = await tx.contact.findFirst({
       where: { id: contactId, tenantId },
