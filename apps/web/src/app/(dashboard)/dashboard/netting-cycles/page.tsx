@@ -64,7 +64,6 @@ export default function NettingCyclesPage() {
   const [contactSearch, setContactSearch] = useState('');
   const [showContactDropdown, setShowContactDropdown] = useState(false);
   const contactDropdownRef = useRef<HTMLDivElement>(null);
-  const [createStartDate, setCreateStartDate] = useState('');
   const [createEndDate, setCreateEndDate] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -123,26 +122,12 @@ export default function NettingCyclesPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Auto-calculate end date when contact and start date are set
+  // Fetch unpaid invoices when contact + end date are set
   useEffect(() => {
-    if (createContactId && createStartDate) {
-      const contact = contacts.find((c) => c.id === createContactId);
-      if (contact?.paymentTermDays) {
-        const start = new Date(createStartDate);
-        const end = new Date(start);
-        end.setDate(end.getDate() + contact.paymentTermDays - 1);
-        setCreateEndDate(end.toISOString().split('T')[0]);
-      }
-    }
-  }, [createContactId, createStartDate, contacts]);
-
-  // Fetch unpaid invoices when contact + dates are set
-  useEffect(() => {
-    if (createContactId && createStartDate && createEndDate) {
+    if (createContactId && createEndDate) {
       setLoadingInvoices(true);
       api.get<any[]>('/netting-cycles/unpaid-invoices', {
         contactId: createContactId,
-        startDate: createStartDate,
         endDate: createEndDate,
       }).then((data) => {
         setAvailableInvoices(data);
@@ -154,10 +139,10 @@ export default function NettingCyclesPage() {
       setAvailableInvoices([]);
       setSelectedInvoiceIds([]);
     }
-  }, [createContactId, createStartDate, createEndDate]);
+  }, [createContactId, createEndDate]);
 
   const handleCreate = async () => {
-    if (!createContactId || !createStartDate || !createEndDate) {
+    if (!createContactId || !createEndDate) {
       setCreateError('All fields are required');
       return;
     }
@@ -170,14 +155,12 @@ export default function NettingCyclesPage() {
     try {
       await api.post('/netting-cycles', {
         contactId: createContactId,
-        startDate: createStartDate,
         endDate: createEndDate,
         invoiceIds: selectedInvoiceIds,
       });
       setShowCreate(false);
       setCreateContactId('');
       setContactSearch('');
-      setCreateStartDate('');
       setCreateEndDate('');
       setAvailableInvoices([]);
       setSelectedInvoiceIds([]);
@@ -373,25 +356,14 @@ export default function NettingCyclesPage() {
                   )}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Start Date *</label>
-                  <input
-                    type="date"
-                    value={createStartDate}
-                    onChange={(e) => setCreateStartDate(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">End Date *</label>
-                  <input
-                    type="date"
-                    value={createEndDate}
-                    onChange={(e) => setCreateEndDate(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">End Date *</label>
+                <input
+                  type="date"
+                  value={createEndDate}
+                  onChange={(e) => setCreateEndDate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
               </div>
               {/* Invoice selection */}
               {availableInvoices.length > 0 && (
@@ -473,7 +445,7 @@ export default function NettingCyclesPage() {
                   <span className="ml-2 text-sm text-gray-500">Loading invoices...</span>
                 </div>
               )}
-              {!loadingInvoices && createContactId && createStartDate && createEndDate && availableInvoices.length === 0 && (
+              {!loadingInvoices && createContactId && createEndDate && availableInvoices.length === 0 && (
                 <p className="text-sm text-gray-500">No unpaid invoices found for this customer in the selected period.</p>
               )}
 

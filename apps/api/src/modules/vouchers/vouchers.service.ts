@@ -129,7 +129,9 @@ export class VouchersService {
     tenantId: string,
     contactId: string | null | undefined,
     totalAmount: Decimal,
+    voucherType: VoucherType,
   ): Promise<void> {
+    if (voucherType !== VoucherType.PAYMENT) return;
     if (!contactId) return;
     const contact = await tx.contact.findFirst({
       where: { id: contactId, tenantId },
@@ -286,7 +288,7 @@ export class VouchersService {
     const voucherExchangeRate = dto.exchangeRate || '1';
 
     return this.prisma.$transaction(async (tx) => {
-      await this.validateMinThreshold(tx, tenantId, dto.contactId, totalDebits);
+      await this.validateMinThreshold(tx, tenantId, dto.contactId, totalDebits, dto.voucherType);
 
       const accountIds = dto.lineItems.map((li) => li.accountId);
       await this.validateAccounts(tenantId, accountIds, tx);
@@ -405,7 +407,7 @@ export class VouchersService {
     const voucherExchangeRate = voucherDto.exchangeRate || '1';
 
     return this.prisma.$transaction(async (tx) => {
-      await this.validateMinThreshold(tx, tenantId, voucherDto.contactId, totalDebits);
+      await this.validateMinThreshold(tx, tenantId, voucherDto.contactId, totalDebits, voucherDto.voucherType);
 
       const accountIds = voucherDto.lineItems.map((li) => li.accountId);
       await this.validateAccounts(tenantId, accountIds, tx);
@@ -532,7 +534,7 @@ export class VouchersService {
     const voucherExchangeRate = voucherDto.exchangeRate || '1';
 
     return this.prisma.$transaction(async (tx) => {
-      await this.validateMinThreshold(tx, tenantId, voucherDto.contactId, totalDebits);
+      await this.validateMinThreshold(tx, tenantId, voucherDto.contactId, totalDebits, voucherDto.voucherType);
 
       const accountIds = voucherDto.lineItems.map((li) => li.accountId);
       await this.validateAccounts(tenantId, accountIds, tx);
@@ -849,6 +851,7 @@ export class VouchersService {
         attachments: true,
         reversedFrom: { select: { id: true, voucherNumber: true } },
         reversals: { select: { id: true, voucherNumber: true, status: true } },
+        contact: { select: { id: true, name: true, invoiceTerms: true, paymentTermDays: true } },
       },
     });
 

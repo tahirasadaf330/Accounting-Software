@@ -70,6 +70,7 @@ interface VoucherDetail {
   totalAmount: string;
   currencyCode: string;
   contactId?: string | null;
+  contact?: { id: string; name: string; invoiceTerms?: string | null; paymentTermDays?: number | null } | null;
   createdBy?: { firstName: string; lastName: string };
   approvedBy?: { firstName: string; lastName: string } | null;
   rejectionReason?: string | null;

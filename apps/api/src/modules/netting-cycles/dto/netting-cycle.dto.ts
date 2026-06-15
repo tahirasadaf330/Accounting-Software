@@ -6,9 +6,10 @@ export class CreateNettingCycleDto {
   @IsUUID()
   contactId: string;
 
-  @ApiProperty({ example: '2026-04-01', description: 'Cycle start date' })
+  @ApiPropertyOptional({ example: '2026-04-01', description: 'Cycle start date (optional; defaults to beginning of time when omitted)' })
+  @IsOptional()
   @IsDateString()
-  startDate: string;
+  startDate?: string;
 
   @ApiProperty({ example: '2026-04-07', description: 'Cycle end date' })
   @IsDateString()

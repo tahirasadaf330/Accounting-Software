@@ -25,6 +25,7 @@ interface VoucherDetail {
   approvedBy?: { firstName: string; lastName: string } | null;
   createdAt: string;
   lineItems: LineItem[];
+  contact?: { id: string; name: string; invoiceTerms?: string | null; paymentTermDays?: number | null } | null;
 }
 
 const typeLabels: Record<string, string> = {
@@ -130,6 +131,14 @@ const VoucherPrintLayout = React.forwardRef<HTMLDivElement, VoucherPrintLayoutPr
               <td style={{ padding: '4px 8px', fontWeight: 600 }}>Approved By</td>
               <td style={{ padding: '4px 8px' }}>{approvedByName || '—'}</td>
             </tr>
+            {voucher.contact?.paymentTermDays && (
+              <tr>
+                <td style={{ padding: '4px 8px', fontWeight: 600 }}>Payment Terms</td>
+                <td style={{ padding: '4px 8px' }} colSpan={3}>
+                  Net {voucher.contact.paymentTermDays} days
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
 
@@ -339,6 +348,28 @@ const VoucherPrintLayout = React.forwardRef<HTMLDivElement, VoucherPrintLayoutPr
             </tr>
           </tbody>
         </table>
+
+        {/* Invoice Terms */}
+        {voucher.contact?.invoiceTerms && (
+          <div style={{ marginBottom: '24px' }}>
+            <div style={{ fontWeight: 600, marginBottom: '4px', fontSize: '13px' }}>
+              Terms &amp; Conditions
+            </div>
+            <div
+              style={{
+                padding: '8px 12px',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                fontSize: '12px',
+                color: '#374151',
+                lineHeight: '1.6',
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {voucher.contact.invoiceTerms}
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div

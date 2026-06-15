@@ -98,6 +98,11 @@ export class UpdateContactDto {
   @MaxLength(3)
   currencyCode?: string;
 
+  @ApiPropertyOptional({ example: 'Payment due within 30 days of invoice date.', description: 'Invoice terms text' })
+  @IsOptional()
+  @IsString()
+  invoiceTerms?: string;
+
   @ApiPropertyOptional({ example: 'Acme Corp', description: 'Beneficiary name (account holder)' })
   @IsOptional()
   @IsString()

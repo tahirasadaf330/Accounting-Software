@@ -147,6 +147,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
   const [creditLimit, setCreditLimit] = useState('');
   const [minThreshold, setMinThreshold] = useState('');
   const [paymentTermDays, setPaymentTermDays] = useState('');
+  const [invoiceTerms, setInvoiceTerms] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [amApprovalRequired, setAmApprovalRequired] = useState(false);
   const [billingStartDate, setBillingStartDate] = useState('');
@@ -200,6 +201,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
       setCreditLimit(contact.creditLimit || '');
       setMinThreshold(contact.minThreshold || '');
       setPaymentTermDays(contact.paymentTermDays?.toString() || '');
+      setInvoiceTerms((contact as any).invoiceTerms || '');
       setIsActive(contact.isActive);
       setAmApprovalRequired(contact.amApprovalRequired ?? false);
       setBillingStartDate((contact as any).billingStartDate || '');
@@ -281,6 +283,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
         isActive,
         billingStartDate: billingStartDate || null,
         currencyCode: currencyCode || 'USD',
+        invoiceTerms: invoiceTerms.trim() || null,
         bankBeneficiaryName: bankBeneficiaryName.trim() || null,
         bankName: bankName.trim() || null,
         bankAccountNumber: bankAccountNumber.trim() || null,
@@ -471,7 +474,7 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20" />
               </div>
 
-              {/* Credit Limit & Payment Terms */}
+              {/* Credit Limit & Min Threshold */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="edit-creditLimit" className="mb-1 block text-sm font-medium text-gray-700">Credit Limit</label>
@@ -485,6 +488,31 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
                   {fieldErrors.creditLimit && <p className="mt-1 text-xs text-red-600">{fieldErrors.creditLimit}</p>}
                 </div>
                 <div>
+                  <label htmlFor="edit-minThreshold" className="mb-1 block text-sm font-medium text-gray-700">Min Threshold</label>
+                  <input
+                    id="edit-minThreshold"
+                    type="number"
+                    inputMode="decimal"
+                    value={minThreshold}
+                    onChange={(e) => { setMinThreshold(e.target.value); setFieldErrors((p) => ({ ...p, minThreshold: '' })); }}
+                    placeholder="e.g. 1000"
+                    min="0"
+                    className={cn(
+                      'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
+                      fieldErrors.minThreshold ? 'border-red-300' : 'border-gray-300',
+                    )}
+                  />
+                  {fieldErrors.minThreshold ? (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.minThreshold}</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-gray-500">Payments below this amount will be blocked.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Payment Terms & Invoice Terms */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label htmlFor="edit-paymentTermDays" className="mb-1 block text-sm font-medium text-gray-700">Payment Terms (days)</label>
                   <input id="edit-paymentTermDays" type="text" value={paymentTermDays}
                     onChange={(e) => { setPaymentTermDays(e.target.value); setFieldErrors((p) => ({ ...p, paymentTermDays: '' })); }}
@@ -495,33 +523,17 @@ export default function EditContactModal({ open, onClose, onSuccess, contact }: 
                   />
                   {fieldErrors.paymentTermDays && <p className="mt-1 text-xs text-red-600">{fieldErrors.paymentTermDays}</p>}
                 </div>
-              </div>
-
-              {/* Min Threshold */}
-              <div>
-                <label htmlFor="edit-minThreshold" className="mb-1 block text-sm font-medium text-gray-700">
-                  Min Threshold
-                </label>
-                <input
-                  id="edit-minThreshold"
-                  type="number"
-                  inputMode="decimal"
-                  value={minThreshold}
-                  onChange={(e) => { setMinThreshold(e.target.value); setFieldErrors((p) => ({ ...p, minThreshold: '' })); }}
-                  placeholder="e.g. 1000"
-                  min="0"
-                  className={cn(
-                    'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20',
-                    fieldErrors.minThreshold ? 'border-red-300' : 'border-gray-300',
-                  )}
-                />
-                {fieldErrors.minThreshold ? (
-                  <p className="mt-1 text-xs text-red-600">{fieldErrors.minThreshold}</p>
-                ) : (
-                  <p className="mt-1 text-xs text-gray-500">
-                    Vouchers, receipts, and payments below this amount will be blocked.
-                  </p>
-                )}
+                <div>
+                  <label htmlFor="edit-invoiceTerms" className="mb-1 block text-sm font-medium text-gray-700">Invoice Terms</label>
+                  <input
+                    id="edit-invoiceTerms"
+                    type="text"
+                    value={invoiceTerms}
+                    onChange={(e) => setInvoiceTerms(e.target.value)}
+                    placeholder="e.g. Net 30 days"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  />
+                </div>
               </div>
 
               {/* Billing Start Date */}
