@@ -576,8 +576,10 @@ model BankAccount {
   id            String   @id @default(uuid())
   tenantId      String
   accountId     String
+  accountType   String   @default("BANK") @db.VarChar(10)
   bankName      String   @db.VarChar(255)
   accountNumber String   @db.VarChar(50)
+  walletAddress String?  @db.VarChar(255)
   currency      String   @default("USD") @db.VarChar(3)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())

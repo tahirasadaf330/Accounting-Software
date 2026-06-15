@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateBankAccountDto {
@@ -7,21 +7,32 @@ export class CreateBankAccountDto {
   @IsNotEmpty()
   accountId: string;
 
-  @ApiProperty({ description: 'Name of the bank', example: 'First National Bank' })
+  @ApiPropertyOptional({ description: 'Account type: BANK or CRYPTO', example: 'BANK', default: 'BANK' })
+  @IsOptional()
+  @IsIn(['BANK', 'CRYPTO'])
+  accountType?: string;
+
+  @ApiProperty({ description: 'Name of the bank or exchange', example: 'First National Bank' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
   bankName: string;
 
-  @ApiProperty({ description: 'Bank account number', example: '1234567890' })
+  @ApiProperty({ description: 'Bank account number or exchange account ID', example: '1234567890' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
   accountNumber: string;
 
+  @ApiPropertyOptional({ description: 'Wallet address (for crypto accounts)', example: '0xAbc123...' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  walletAddress?: string;
+
   @ApiPropertyOptional({ description: 'Currency code', example: 'USD', default: 'USD' })
   @IsOptional()
   @IsString()
-  @MaxLength(3)
+  @MaxLength(10)
   currency?: string;
 }
