@@ -16,6 +16,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Wallet,
   X,
 } from 'lucide-react';
 
@@ -31,8 +32,10 @@ interface Account {
 
 interface BankAccount {
   id: string;
+  accountType: string;
   bankName: string;
   accountNumber: string;
+  walletAddress?: string | null;
   currency: string;
   isActive: boolean;
   account: { id: string; code: string; name: string };
@@ -230,7 +233,7 @@ function AccountCombobox({
       </div>
 
       {open && (
-        <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+        <ul className="absolute z-[200] mt-1 max-h-48 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
           {filtered.length === 0 ? (
             <li className="px-3 py-2 text-sm text-gray-500">No accounts found</li>
           ) : (
@@ -272,36 +275,50 @@ function AddBankAccountModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const [accountType, setAccountType] = useState<'BANK' | 'CRYPTO'>('BANK');
   const [bankName, setBankName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
+  const [walletAddress, setWalletAddress] = useState('');
   const [currency, setCurrency] = useState('USD');
   const [accountId, setAccountId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  const isCrypto = accountType === 'CRYPTO';
+
+  const reset = () => {
+    setAccountType('BANK');
+    setBankName('');
+    setAccountNumber('');
+    setWalletAddress('');
+    setCurrency('USD');
+    setAccountId('');
+    setError('');
+  };
+
+  const handleClose = () => { reset(); onClose(); };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bankName.trim() || !accountNumber.trim() || !accountId) {
-      setError('All fields are required.');
+      setError('All required fields must be filled.');
       return;
     }
     setSubmitting(true);
     setError('');
     try {
       await api.post('/bank-reconciliation/bank-accounts', {
+        accountType,
         bankName: bankName.trim(),
         accountNumber: accountNumber.trim(),
+        walletAddress: walletAddress.trim() || undefined,
         currency: currency.trim() || 'USD',
         accountId,
       });
       onCreated();
-      onClose();
-      setBankName('');
-      setAccountNumber('');
-      setCurrency('USD');
-      setAccountId('');
+      reset();
     } catch (err: any) {
-      setError(err?.message || 'Failed to create bank account.');
+      setError(err?.message || 'Failed to create account.');
     }
     setSubmitting(false);
   };
@@ -309,10 +326,199 @@ function AddBankAccountModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="mx-4 flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Add {isCrypto ? 'Crypto' : 'Bank'} Account
+          </h3>
+          <button onClick={handleClose} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+          {error && (
+            <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+          )}
+
+          {/* Account Type Toggle */}
+          <div className="mb-4">
+            <label className="mb-1 block text-sm font-medium text-gray-700">Account Type</label>
+            <div className="flex rounded-lg border border-gray-300 p-1">
+              <button
+                type="button"
+                onClick={() => setAccountType('BANK')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  !isCrypto ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50',
+                )}
+              >
+                <Landmark className="h-4 w-4" />
+                Bank
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccountType('CRYPTO')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  isCrypto ? 'bg-orange-500 text-white' : 'text-gray-600 hover:bg-gray-50',
+                )}
+              >
+                <Wallet className="h-4 w-4" />
+                Crypto
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              {isCrypto ? 'Exchange / Wallet Name' : 'Bank Name'} <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={bankName}
+              onChange={(e) => setBankName(e.target.value)}
+              placeholder={isCrypto ? 'e.g. Binance, MetaMask' : 'e.g. National Bank'}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              {isCrypto ? 'Account / User ID' : 'Account Number'} <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={accountNumber}
+              onChange={(e) => setAccountNumber(e.target.value)}
+              placeholder={isCrypto ? 'e.g. user@binance or UID-12345' : 'e.g. 1234567890'}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+            />
+          </div>
+
+          {isCrypto && (
+            <div className="mb-4">
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Wallet Address <span className="text-xs text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={walletAddress}
+                onChange={(e) => setWalletAddress(e.target.value)}
+                placeholder="e.g. 0xAbc123..."
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+              />
+            </div>
+          )}
+
+          <div className="mb-4">
+            <label className="mb-1 block text-sm font-medium text-gray-700">Currency</label>
+            <input
+              type="text"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              placeholder={isCrypto ? 'e.g. USDT, BTC, ETH' : 'USD'}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Linked COA Account <span className="text-red-500">*</span>
+            </label>
+            <AccountCombobox accounts={accounts} value={accountId} onChange={setAccountId} />
+          </div>
+          </div>
+
+          <div className="shrink-0 flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+            <button
+              type="button"
+              onClick={handleClose}
+              disabled={submitting}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className={cn(
+                'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50',
+                isCrypto ? 'bg-orange-500 hover:bg-orange-600' : 'bg-primary-600 hover:bg-primary-700',
+              )}
+            >
+              {submitting ? 'Creating...' : `Add ${isCrypto ? 'Crypto' : 'Bank'} Account`}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// --- Edit Bank Account Modal ---
+
+function EditBankAccountModal({
+  account,
+  onClose,
+  onUpdated,
+}: {
+  account: BankAccount | null;
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [walletAddress, setWalletAddress] = useState('');
+  const [currency, setCurrency] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (account) {
+      setBankName(account.bankName);
+      setAccountNumber(account.accountNumber);
+      setWalletAddress(account.walletAddress || '');
+      setCurrency(account.currency);
+      setError('');
+    }
+  }, [account]);
+
+  if (!account) return null;
+
+  const isCrypto = account.accountType === 'CRYPTO';
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bankName.trim() || !accountNumber.trim()) {
+      setError('Name and account number are required.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.patch(`/bank-reconciliation/bank-accounts/${account.id}`, {
+        bankName: bankName.trim(),
+        accountNumber: accountNumber.trim(),
+        walletAddress: walletAddress.trim() || null,
+        currency: currency.trim() || 'USD',
+      });
+      onUpdated();
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update account.');
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="mx-4 w-full max-w-lg rounded-xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-          <h3 className="text-lg font-semibold text-gray-900">Add Bank Account</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Edit {isCrypto ? 'Crypto' : 'Bank'} Account
+          </h3>
           <button onClick={onClose} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
             <X className="h-5 w-5" />
           </button>
@@ -323,43 +529,47 @@ function AddBankAccountModal({
           )}
           <div className="mb-4">
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Bank Name <span className="text-red-500">*</span>
+              {isCrypto ? 'Exchange / Wallet Name' : 'Bank Name'} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={bankName}
               onChange={(e) => setBankName(e.target.value)}
-              placeholder="e.g. National Bank"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
             />
           </div>
           <div className="mb-4">
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Account Number <span className="text-red-500">*</span>
+              {isCrypto ? 'Account / User ID' : 'Account Number'} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value)}
-              placeholder="e.g. 1234567890"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
             />
           </div>
+          {isCrypto && (
+            <div className="mb-4">
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Wallet Address <span className="text-xs text-gray-400">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={walletAddress}
+                onChange={(e) => setWalletAddress(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+              />
+            </div>
+          )}
           <div className="mb-4">
             <label className="mb-1 block text-sm font-medium text-gray-700">Currency</label>
             <input
               type="text"
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              placeholder="USD"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
             />
-          </div>
-          <div className="mb-4">
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Linked Account <span className="text-red-500">*</span>
-            </label>
-            <AccountCombobox accounts={accounts} value={accountId} onChange={setAccountId} />
           </div>
           <div className="flex justify-end gap-3 border-t border-gray-200 pt-4">
             <button
@@ -375,7 +585,7 @@ function AddBankAccountModal({
               disabled={submitting}
               className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
             >
-              {submitting ? 'Creating...' : 'Add Bank Account'}
+              {submitting ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>
@@ -1270,6 +1480,9 @@ export default function BankReconciliationPage() {
   // Modal booleans
   const [showAddBankAccount, setShowAddBankAccount] = useState(false);
   const [showImportStatement, setShowImportStatement] = useState(false);
+  const [editBankAccount, setEditBankAccount] = useState<BankAccount | null>(null);
+  const [deleteConfirmAccount, setDeleteConfirmAccount] = useState<BankAccount | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [showStartReconciliation, setShowStartReconciliation] = useState(false);
 
   // Statements
@@ -1365,6 +1578,19 @@ export default function BankReconciliationPage() {
   const handleStartReconciliation = (bank: BankAccount) => {
     setSelectedBankAccount(bank);
     setShowStartReconciliation(true);
+  };
+
+  const handleDeleteBankAccount = async () => {
+    if (!deleteConfirmAccount) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/bank-reconciliation/bank-accounts/${deleteConfirmAccount.id}`);
+      setDeleteConfirmAccount(null);
+      loadBankAccounts();
+    } catch (err: any) {
+      alert(err?.message || 'Failed to delete account.');
+    }
+    setDeleting(false);
   };
 
   const handleReconciliationStarted = async (reconciliationId: string) => {
@@ -1542,17 +1768,30 @@ export default function BankReconciliationPage() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {bankAccounts.map((bank) => (
+          {bankAccounts.map((bank) => {
+            const isCrypto = bank.accountType === 'CRYPTO';
+            return (
             <div
               key={bank.id}
               className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200 hover:shadow-md"
             >
               <div className="flex items-center gap-3">
-                <div className="rounded-lg bg-blue-100 p-2">
-                  <Landmark className="h-5 w-5 text-blue-600" />
+                <div className={cn('rounded-lg p-2', isCrypto ? 'bg-orange-100' : 'bg-blue-100')}>
+                  {isCrypto
+                    ? <Wallet className="h-5 w-5 text-orange-500" />
+                    : <Landmark className="h-5 w-5 text-blue-600" />
+                  }
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-900">{bank.bankName}</h3>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-gray-900 truncate">{bank.bankName}</h3>
+                    <span className={cn(
+                      'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
+                      isCrypto ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700',
+                    )}>
+                      {isCrypto ? 'CRYPTO' : 'BANK'}
+                    </span>
+                  </div>
                   <p className="text-xs text-gray-500">****{bank.accountNumber.slice(-4)}</p>
                 </div>
               </div>
@@ -1564,6 +1803,12 @@ export default function BankReconciliationPage() {
                 <p>
                   <span className="text-gray-500">Currency:</span> {bank.currency}
                 </p>
+                {isCrypto && bank.walletAddress && (
+                  <p className="truncate">
+                    <span className="text-gray-500">Wallet:</span>{' '}
+                    <span className="font-mono text-xs">{bank.walletAddress}</span>
+                  </p>
+                )}
               </div>
               <div className="mt-4 flex gap-2">
                 <button
@@ -1588,8 +1833,22 @@ export default function BankReconciliationPage() {
                   Reconcile
                 </button>
               </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={() => setEditBankAccount(bank)}
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => setDeleteConfirmAccount(bank)}
+                  className="flex-1 rounded-lg border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
-          ))}
+          );})}
         </div>
       )}
 
@@ -1618,6 +1877,21 @@ export default function BankReconciliationPage() {
         bankAccount={selectedBankAccount}
         onClose={() => setShowStartReconciliation(false)}
         onStarted={handleReconciliationStarted}
+      />
+      <EditBankAccountModal
+        account={editBankAccount}
+        onClose={() => setEditBankAccount(null)}
+        onUpdated={() => { loadBankAccounts(); setEditBankAccount(null); }}
+      />
+      <ConfirmModal
+        open={!!deleteConfirmAccount}
+        title="Delete Account"
+        message={`Are you sure you want to delete "${deleteConfirmAccount?.bankName}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        confirmColor="red"
+        loading={deleting}
+        onConfirm={handleDeleteBankAccount}
+        onCancel={() => setDeleteConfirmAccount(null)}
       />
     </div>
   );

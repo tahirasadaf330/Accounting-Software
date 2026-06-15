@@ -55,12 +55,48 @@ export class BankReconciliationService {
       data: {
         tenantId,
         accountId: dto.accountId,
+        accountType: dto.accountType ?? 'BANK',
         bankName: dto.bankName,
         accountNumber: dto.accountNumber,
+        walletAddress: dto.walletAddress ?? null,
         currency: dto.currency ?? 'USD',
       },
       include: { account: true },
     });
+  }
+
+  async updateBankAccount(tenantId: string, id: string, dto: Partial<CreateBankAccountDto>) {
+    const existing = await this.prisma.bankAccount.findFirst({
+      where: { id, tenantId },
+    });
+    if (!existing) throw new NotFoundException('Bank account not found');
+
+    return this.prisma.bankAccount.update({
+      where: { id },
+      data: {
+        ...(dto.bankName !== undefined && { bankName: dto.bankName }),
+        ...(dto.accountNumber !== undefined && { accountNumber: dto.accountNumber }),
+        ...(dto.walletAddress !== undefined && { walletAddress: dto.walletAddress || null }),
+        ...(dto.currency !== undefined && { currency: dto.currency }),
+        ...(dto.accountType !== undefined && { accountType: dto.accountType }),
+      },
+      include: { account: true },
+    });
+  }
+
+  async deleteBankAccount(tenantId: string, id: string) {
+    const existing = await this.prisma.bankAccount.findFirst({
+      where: { id, tenantId },
+    });
+    if (!existing) throw new NotFoundException('Bank account not found');
+
+    const hasStatements = await this.prisma.bankStatement.count({ where: { bankAccountId: id } });
+    if (hasStatements > 0) {
+      throw new BadRequestException('Cannot delete a bank account that has imported statements');
+    }
+
+    await this.prisma.bankAccount.delete({ where: { id } });
+    return { message: 'Bank account deleted successfully' };
   }
 
   async findBankAccounts(tenantId: string) {

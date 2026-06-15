@@ -4,6 +4,55 @@ A running record of features, fixes, and changes per branch / release.
 
 ---
 
+## `enhancement` branch — 2026-06-16
+
+### Added — Crypto Account support in Bank Reconciliation
+
+- The **Bank Reconciliation** page (`/dashboard/bank`) now supports both **Bank** and **Crypto** account types alongside each other.
+- When adding a new account, an **Account Type toggle** (Bank / Crypto) appears at the top of the modal. Selecting Crypto:
+  - Relabels "Bank Name" → "Exchange / Wallet Name" (e.g. Binance, MetaMask).
+  - Relabels "Account Number" → "Account / User ID".
+  - Shows an additional optional **Wallet Address** field (monospace input).
+  - Changes the currency placeholder to suggest crypto currencies (USDT, BTC, ETH).
+  - Turns the submit button orange to visually distinguish the action.
+- Account cards on the dashboard distinguish type at a glance:
+  - Crypto accounts show an **orange Wallet icon** and an orange **CRYPTO** badge.
+  - Bank accounts keep the blue Landmark icon and a blue **BANK** badge.
+  - Wallet address is displayed on the card when present.
+- Import Statement, Auto-Match, Manual Match, and Complete Reconciliation flows are identical for both account types — no separate module needed.
+
+### Added — Edit and Delete for Bank / Crypto Accounts
+
+- Each account card on the Bank Reconciliation page now has **Edit** and **Delete** buttons.
+- **Edit** opens a pre-filled modal to update the exchange/bank name, account/user ID, wallet address (crypto only), and currency. The linked COA account cannot be changed after creation.
+- **Delete** shows a confirmation dialog before removing the account. Deletion is blocked with an error message if the account already has imported statements (to protect reconciliation history).
+
+### Database
+
+- Migration `20260615000000_add_billing_officer_department_manager_roles` — adds `BILLING_OFFICER` and `DEPARTMENT_MANAGER` values to the `Role` enum (reserved for future use; not exposed in any invite or role-change flow).
+- Migration `20260616000000_add_crypto_account_fields` — adds `accountType VARCHAR(10) DEFAULT 'BANK'` and `walletAddress VARCHAR(255)` (nullable) to the `bank_accounts` table.
+
+### Backend
+
+- `apps/api/src/modules/bank-reconciliation/dto/create-bank-account.dto.ts` — added `accountType` (`BANK` | `CRYPTO`, optional, default `BANK`) and `walletAddress` (optional string, max 255).
+- `apps/api/src/modules/bank-reconciliation/bank-reconciliation.service.ts` — `createBankAccount` saves new fields; added `updateBankAccount` and `deleteBankAccount` methods.
+- `apps/api/src/modules/bank-reconciliation/bank-reconciliation.controller.ts` — added `PATCH /bank-reconciliation/bank-accounts/:id` and `DELETE /bank-reconciliation/bank-accounts/:id` endpoints (OWNER / CHIEF_ACCOUNTANT only).
+
+### Frontend
+
+- `apps/web/src/app/(dashboard)/dashboard/bank/page.tsx`:
+  - `BankAccount` interface extended with `accountType` and `walletAddress`.
+  - `AddBankAccountModal` — Bank/Crypto toggle, dynamic labels, conditional wallet address field, scrollable modal body (`max-h-[90vh]`), dropdown z-index raised to `z-[200]`.
+  - `EditBankAccountModal` — new component, pre-fills current values, shows wallet address field for crypto accounts only.
+  - Account cards — type-aware icon/badge, wallet address display, Edit and Delete buttons with confirmation dialog.
+
+### Notes
+
+- Existing bank accounts are unaffected — they default to `accountType = 'BANK'` via the migration default.
+- The reconciliation engine (auto-match algorithm, manual matching, statement import) is shared between bank and crypto accounts with no changes.
+
+---
+
 ## `filter` branch — 2026-05-12
 
 ### Added — Sortable columns on the Vouchers list

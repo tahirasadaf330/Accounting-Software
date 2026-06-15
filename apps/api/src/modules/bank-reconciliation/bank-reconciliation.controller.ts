@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Delete,
   Body,
   Param,
@@ -44,6 +45,28 @@ export class BankReconciliationController {
   @ApiOperation({ summary: 'List all bank accounts for the tenant' })
   async findBankAccounts(@TenantId() tenantId: string) {
     return this.bankReconciliationService.findBankAccounts(tenantId);
+  }
+
+  @Patch('bank-accounts/:id')
+  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @ApiOperation({ summary: 'Update a bank/crypto account' })
+  async updateBankAccount(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Body() dto: CreateBankAccountDto,
+  ) {
+    return this.bankReconciliationService.updateBankAccount(tenantId, id, dto);
+  }
+
+  @Delete('bank-accounts/:id')
+  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a bank/crypto account (only if no statements exist)' })
+  async deleteBankAccount(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+  ) {
+    return this.bankReconciliationService.deleteBankAccount(tenantId, id);
   }
 
   // ---------------------------------------------------------------------------
