@@ -75,6 +75,7 @@ interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   children?: { name: string; href: string; icon: React.ComponentType<{ className?: string }> }[];
+  roles?: string[];
 }
 
 const navigation: NavItem[] = [
