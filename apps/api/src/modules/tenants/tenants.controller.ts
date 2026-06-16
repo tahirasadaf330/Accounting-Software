@@ -24,7 +24,7 @@ import { PAGINATION_DEFAULTS } from '@accounting-saas/shared';
 @ApiTags('tenants')
 @ApiBearerAuth()
 @Controller('admin/tenants')
-@Roles(Role.SUPER_ADMIN)
+@Roles(Role.OWNER)
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 

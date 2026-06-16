@@ -27,7 +27,7 @@ export class NettingCyclesController {
   constructor(private readonly service: NettingCyclesService) {}
 
   @Post()
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Create a netting cycle' })
   create(@TenantId() tenantId: string, @Body() dto: CreateNettingCycleDto) {
     return this.service.create(tenantId, dto);
@@ -76,7 +76,7 @@ export class NettingCyclesController {
   }
 
   @Post(':id/send-to-am')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send cycle to AM for approval' })
   sendToAM(@TenantId() tenantId: string, @Param('id', ParseUUIDPipe) id: string) {
@@ -131,7 +131,7 @@ export class NettingCyclesController {
   }
 
   @Delete(':id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a netting cycle' })
   async delete(

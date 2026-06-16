@@ -33,7 +33,7 @@ export class ContactsController {
   constructor(private readonly contactsService: ContactsService) {}
 
   @Post()
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new contact' })
   @ApiResponse({ status: 201, description: 'Contact created successfully' })
@@ -87,7 +87,7 @@ export class ContactsController {
   }
 
   @Patch(':id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Update a contact' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiResponse({ status: 200, description: 'Contact updated successfully' })
@@ -101,7 +101,7 @@ export class ContactsController {
   }
 
   @Delete(':id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a contact' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })

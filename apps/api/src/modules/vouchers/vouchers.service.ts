@@ -1064,7 +1064,7 @@ export class VouchersService {
 
   /**
    * Approve a voucher and auto-post it.
-   * Only OWNER and CHIEF_ACCOUNTANT roles can approve (enforced at controller level).
+   * Only OWNER, FINANCE_MANAGER, and ASSISTANT_MANAGER_BILLING roles can approve (enforced at controller level).
    */
   async approve(tenantId: string, id: string, userId: string) {
     const voucher = await this.prisma.voucher.findFirst({
@@ -1114,7 +1114,7 @@ export class VouchersService {
 
   /**
    * Reject a voucher with a reason.
-   * Only OWNER and CHIEF_ACCOUNTANT roles can reject (enforced at controller level).
+   * Only OWNER, FINANCE_MANAGER, and ASSISTANT_MANAGER_BILLING roles can reject (enforced at controller level).
    */
   async reject(tenantId: string, id: string, userId: string, reason: string) {
     const voucher = await this.prisma.voucher.findFirst({

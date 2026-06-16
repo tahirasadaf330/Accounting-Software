@@ -21,7 +21,7 @@ export class FiscalYearController {
   constructor(private readonly fiscalYearService: FiscalYearService) {}
 
   @Post()
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Create a new fiscal year with auto-generated monthly periods' })
   async create(
     @TenantId() tenantId: string,
@@ -54,7 +54,7 @@ export class FiscalYearController {
 
   @Post('periods/:periodId/close')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Close a fiscal period (prevents posting to it)' })
   @ApiParam({ name: 'periodId', description: 'Fiscal period UUID' })
   async closePeriod(
@@ -78,7 +78,7 @@ export class FiscalYearController {
 
   @Post(':id/close')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Close a fiscal year (all periods must be closed first)' })
   @ApiParam({ name: 'id', description: 'Fiscal year UUID' })
   async closeYear(

@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { TenantId } from '../../common/decorators/tenant-id.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { Role } from '@accounting-saas/shared';
+import { Role } from '@prisma/client';
 import { TrialBalanceService } from './trial-balance.service';
 import { BalanceSheetService } from './balance-sheet.service';
 import { IncomeStatementService } from './income-statement.service';
@@ -18,7 +18,7 @@ import { ARAPReportQueryDto } from './dto/ar-ap-report-query.dto';
 @ApiTags('reports')
 @ApiBearerAuth()
 @Controller('reports')
-@Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+@Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_OFFICE_PAYMENTS, Role.SENIOR_ARAP_OFFICER, Role.PAYMENT_OFFICER)
 export class ReportsController {
   constructor(
     private readonly trialBalanceService: TrialBalanceService,
@@ -101,6 +101,7 @@ export class ReportsController {
   }
 
   @Get('invoices')
+  @Roles(Role.OWNER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_OFFICE_PAYMENTS, Role.SENIOR_ARAP_OFFICER, Role.PAYMENT_OFFICER)
   @ApiOperation({ summary: 'Generate invoice report (sales & purchase)' })
   @ApiResponse({ status: 200, description: 'Invoice report generated successfully' })
   async getInvoiceReport(

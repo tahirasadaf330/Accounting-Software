@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Pagination } from '@/components/Pagination';
-import { Users, Plus, X, Mail, RefreshCw, XCircle } from 'lucide-react';
+import { Users, Plus, X, Mail, RefreshCw, XCircle, Trash2 } from 'lucide-react';
+import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/cn';
 
 interface User {
@@ -33,9 +34,11 @@ interface Invitation {
 
 const roleColors: Record<string, string> = {
   OWNER: 'bg-purple-100 text-purple-700',
-  CHIEF_ACCOUNTANT: 'bg-blue-100 text-blue-700',
-  ACCOUNTANT: 'bg-green-100 text-green-700',
-  SUPER_ADMIN: 'bg-red-100 text-red-700',
+  FINANCE_MANAGER: 'bg-blue-100 text-blue-700',
+  ASSISTANT_MANAGER_BILLING: 'bg-indigo-100 text-indigo-700',
+  SENIOR_OFFICE_PAYMENTS: 'bg-green-100 text-green-700',
+  SENIOR_ARAP_OFFICER: 'bg-teal-100 text-teal-700',
+  PAYMENT_OFFICER: 'bg-yellow-100 text-yellow-700',
 };
 
 const invitationStatusColors: Record<string, string> = {
@@ -48,7 +51,7 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [role, setRole] = useState('ACCOUNTANT');
+  const [role, setRole] = useState('FINANCE_MANAGER');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -135,8 +138,11 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
               onChange={(e) => setRole(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
             >
-              <option value="ACCOUNTANT">Accountant</option>
-              <option value="CHIEF_ACCOUNTANT">Chief Accountant</option>
+              <option value="FINANCE_MANAGER">Finance Manager</option>
+              <option value="ASSISTANT_MANAGER_BILLING">Assistant Manager Billing</option>
+              <option value="SENIOR_OFFICE_PAYMENTS">Senior Office Payments</option>
+              <option value="SENIOR_ARAP_OFFICER">Senior AR/AP Officer</option>
+              <option value="PAYMENT_OFFICER">Payment Officer</option>
             </select>
           </div>
 
@@ -170,6 +176,9 @@ export default function UsersPage() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const currentUser = useAuthStore((s) => s.user);
+  const isOwner = currentUser?.role === 'OWNER';
 
   useEffect(() => {
     loadUsers();
@@ -205,6 +214,18 @@ export default function UsersPage() {
     loadInvitations();
   };
 
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) return;
+    setDeletingId(id);
+    try {
+      await api.delete(`/users/${id}`);
+      loadUsers();
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+    }
+    setDeletingId(null);
+  };
+
   const handleResendInvitation = async (id: string) => {
     try {
       await api.post(`/users/invitations/${id}/resend`);
@@ -230,13 +251,15 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Team Members</h1>
           <p className="mt-1 text-sm text-gray-600">Manage users and roles</p>
         </div>
-        <button
-          onClick={() => setShowInviteModal(true)}
-          className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
-        >
-          <Plus className="h-4 w-4" />
-          Invite User
-        </button>
+        {isOwner && (
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+          >
+            <Plus className="h-4 w-4" />
+            Invite User
+          </button>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
@@ -258,6 +281,7 @@ export default function UsersPage() {
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Email</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Role</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
+                {isOwner && <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -277,6 +301,21 @@ export default function UsersPage() {
                       {u.status}
                     </span>
                   </td>
+                  {isOwner && (
+                    <td className="px-4 py-3 text-right">
+                      {u.role !== 'OWNER' && (
+                        <button
+                          onClick={() => handleDeleteUser(u.id)}
+                          disabled={deletingId === u.id}
+                          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          title="Delete user"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          {deletingId === u.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

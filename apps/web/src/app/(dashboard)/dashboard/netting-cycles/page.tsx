@@ -50,7 +50,7 @@ export default function NettingCyclesPage() {
   const tenant = useAuthStore((s) => s.tenant);
   const user = useAuthStore((s) => s.user);
   const baseCurrency = tenant?.baseCurrency ?? 'USD';
-  const canManage = user?.role === 'OWNER' || user?.role === 'CHIEF_ACCOUNTANT';
+  const canManage = ['OWNER', 'ASSISTANT_MANAGER_BILLING'].includes(user?.role ?? '');
 
   const [cycles, setCycles] = useState<NettingCycle[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);

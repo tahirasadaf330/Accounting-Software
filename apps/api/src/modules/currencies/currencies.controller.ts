@@ -65,7 +65,7 @@ export class CurrenciesController {
   }
 
   @Post('exchange-rates')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Set an exchange rate for a specific date' })
   async setExchangeRate(
     @TenantId() tenantId: string,

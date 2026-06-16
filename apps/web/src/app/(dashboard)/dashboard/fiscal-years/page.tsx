@@ -195,7 +195,7 @@ function CreateFiscalYearModal({
 export default function FiscalYearsPage() {
   const { user } = useAuthStore();
   const userRole = user?.role || '';
-  const canManage = ['OWNER', 'CHIEF_ACCOUNTANT'].includes(userRole);
+  const canManage = ['OWNER', 'FINANCE_MANAGER', 'ASSISTANT_MANAGER_BILLING'].includes(userRole);
   const canReopen = userRole === 'OWNER';
 
   const [fiscalYears, setFiscalYears] = useState<FiscalYear[]>([]);

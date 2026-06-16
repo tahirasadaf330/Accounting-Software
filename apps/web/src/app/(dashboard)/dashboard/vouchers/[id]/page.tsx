@@ -187,7 +187,7 @@ const statusColors: Record<string, string> = {
   REVERSED: 'bg-purple-100 text-purple-700',
 };
 
-const APPROVER_ROLES = ['OWNER', 'CHIEF_ACCOUNTANT'];
+const APPROVER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ASSISTANT_MANAGER_BILLING'];
 
 const defaultLineItem = { accountId: '', debit: '', credit: '', narration: '' };
 

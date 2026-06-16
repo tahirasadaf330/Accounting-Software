@@ -53,6 +53,45 @@ A running record of features, fixes, and changes per branch / release.
 
 ---
 
+## `main` branch — 2026-06-16
+
+### Changed — Role system overhaul
+
+Replaced the old `SUPER_ADMIN`, `CHIEF_ACCOUNTANT`, and `ACCOUNTANT` roles with a new set of roles that map directly to real designations in the Hayo organisation.
+
+**New roles:**
+
+| Role | Designation | Access Level |
+|---|---|---|
+| `OWNER` | CEO | Full access including tenant admin (absorbs old `SUPER_ADMIN`) |
+| `FINANCE_MANAGER` | Finance Manager | Chart of Accounts, Journal Entries, Bank Reconciliation, all Reports except Invoice, User management, Voucher approve/reject |
+| `ASSISTANT_MANAGER_BILLING` | Assistant Manager Billing | Full access to Chart of Accounts, Contacts, Vouchers, Bank Reconciliation, all Reports including Invoice, Netting Cycles, User management |
+| `SENIOR_OFFICE_PAYMENTS` | Senior Office Payments | Contacts (read), Vouchers (create/submit), Invoice Netting (read), Invoice/AR/AP/Netting Reports |
+| `SENIOR_ARAP_OFFICER` | Senior AR/AP Officer | Same as Senior Office Payments plus Bank Reconciliation (read/match) |
+| `PAYMENT_OFFICER` | Payment Officer | Contacts (read), Vouchers (create/submit), Invoice Netting (read), Invoice/AR/AP/Netting Reports |
+
+### Added — Delete user
+
+- `OWNER` can now delete any non-owner user from the Team Members page.
+- A **Delete** button appears in a new Actions column, visible to `OWNER` only.
+- Confirmation dialog shown before deletion. Deleting yourself or another `OWNER` is blocked.
+- Backend: `DELETE /users/:id` endpoint added (OWNER only).
+
+### Added — Users tab hidden for lower roles
+
+- The **Users** sidebar link is now hidden for `SENIOR_OFFICE_PAYMENTS`, `SENIOR_ARAP_OFFICER`, and `PAYMENT_OFFICER` roles — they have no user management access.
+
+### Database
+
+- Migration `20260616120000_update_roles_new_structure` — adds `FINANCE_MANAGER`, `ASSISTANT_MANAGER_BILLING`, `SENIOR_OFFICE_PAYMENTS`, `SENIOR_ARAP_OFFICER`, `PAYMENT_OFFICER` to the `Role` enum.
+- Migration `20260616120001_migrate_existing_roles` — migrates existing data: `CHIEF_ACCOUNTANT → FINANCE_MANAGER`, `ACCOUNTANT → PAYMENT_OFFICER`, `SUPER_ADMIN → OWNER`.
+
+### Seeder
+
+- Updated `apps/api/prisma/seed/seed.ts` to seed all 6 Hayo users with correct roles and passwords (`Hayo@12345`).
+
+---
+
 ## `filter` branch — 2026-05-12
 
 ### Added — Sortable columns on the Vouchers list

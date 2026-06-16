@@ -36,9 +36,9 @@ export class UsersService {
       throw new NotFoundException(`Tenant with ID "${tenantId}" not found`);
     }
 
-    // Prevent creating SUPER_ADMIN users within a tenant
-    if (dto.role === Role.SUPER_ADMIN) {
-      throw new ForbiddenException('Cannot assign SUPER_ADMIN role to tenant users');
+    // Prevent creating OWNER users programmatically (set separately)
+    if (dto.role === Role.OWNER) {
+      throw new ForbiddenException('Cannot assign OWNER role via this endpoint');
     }
 
     // Check if email is already in use
@@ -194,8 +194,8 @@ export class UsersService {
       throw new BadRequestException('User is already inactive');
     }
 
-    if (user.role === Role.SUPER_ADMIN) {
-      throw new ForbiddenException('Cannot deactivate a SUPER_ADMIN user');
+    if (user.role === Role.OWNER) {
+      throw new ForbiddenException('Cannot deactivate an OWNER user');
     }
 
     return this.prisma.user.update({
@@ -241,6 +241,26 @@ export class UsersService {
     });
   }
 
+  async deleteUser(id: string, currentUserId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+
+    if (!user) {
+      throw new NotFoundException(`User with ID "${id}" not found`);
+    }
+
+    if (user.id === currentUserId) {
+      throw new ForbiddenException('You cannot delete your own account');
+    }
+
+    if (user.role === Role.OWNER) {
+      throw new ForbiddenException('Cannot delete an OWNER user');
+    }
+
+    await this.prisma.user.delete({ where: { id } });
+
+    return { message: 'User deleted successfully' };
+  }
+
   async changeRole(id: string, newRole: Role) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -250,12 +270,12 @@ export class UsersService {
       throw new NotFoundException(`User with ID "${id}" not found`);
     }
 
-    if (user.role === Role.SUPER_ADMIN) {
-      throw new ForbiddenException('Cannot change the role of a SUPER_ADMIN user');
+    if (user.role === Role.OWNER) {
+      throw new ForbiddenException('Cannot change the role of an OWNER user');
     }
 
-    if (newRole === Role.SUPER_ADMIN) {
-      throw new ForbiddenException('Cannot assign SUPER_ADMIN role to tenant users');
+    if (newRole === Role.OWNER) {
+      throw new ForbiddenException('Cannot assign OWNER role via this endpoint');
     }
 
     if (user.role === newRole) {
@@ -278,9 +298,9 @@ export class UsersService {
   }
 
   async inviteUser(tenantId: string, invitedById: string, dto: InviteUserDto) {
-    // Only allow CHIEF_ACCOUNTANT or ACCOUNTANT roles for invitations
-    if (dto.role !== Role.CHIEF_ACCOUNTANT && dto.role !== Role.ACCOUNTANT) {
-      throw new BadRequestException('Can only invite users with CHIEF_ACCOUNTANT or ACCOUNTANT role');
+    // Only allow non-OWNER roles for invitations
+    if (dto.role === Role.OWNER) {
+      throw new BadRequestException('Cannot invite users with OWNER role');
     }
 
     // Check no existing user with this email
