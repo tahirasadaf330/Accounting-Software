@@ -84,7 +84,12 @@ async function main() {
   for (const u of hayoUsers) {
     const user = await prisma.user.upsert({
       where: { email: u.email },
-      update: {},
+      update: {
+        role: u.role,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        tenantId: demoTenant.id,
+      },
       create: {
         email: u.email,
         passwordHash: defaultPassword,
@@ -95,7 +100,7 @@ async function main() {
         tenantId: demoTenant.id,
       },
     });
-    console.log(`  ✓ User created: ${user.email} (${user.role})`);
+    console.log(`  ✓ User upserted: ${user.email} (${user.role})`);
   }
 
   // 7. Seed Chart of Accounts for demo tenant
