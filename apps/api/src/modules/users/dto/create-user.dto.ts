@@ -33,12 +33,12 @@ export class CreateUserDto {
   lastName: string;
 
   @ApiProperty({
-    enum: [Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT],
-    example: Role.ACCOUNTANT,
+    enum: [Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_OFFICE_PAYMENTS, Role.SENIOR_ARAP_OFFICER, Role.PAYMENT_OFFICER],
+    example: Role.PAYMENT_OFFICER,
     description: 'User role within the tenant',
   })
   @IsEnum(Role, {
-    message: `Role must be one of: ${Role.OWNER}, ${Role.CHIEF_ACCOUNTANT}, ${Role.ACCOUNTANT}`,
+    message: `Role must be one of: ${Role.OWNER}, ${Role.FINANCE_MANAGER}, ${Role.ASSISTANT_MANAGER_BILLING}, ${Role.SENIOR_OFFICE_PAYMENTS}, ${Role.SENIOR_ARAP_OFFICER}, ${Role.PAYMENT_OFFICER}`,
   })
   role: Role;
 }

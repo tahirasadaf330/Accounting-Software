@@ -34,7 +34,7 @@ async function main() {
   }
   console.log(`  ✓ Seeded ${currencies.length} currencies`);
 
-  // 2. Create Super Admin user (no tenant)
+  // 2. Create platform owner user (no tenant)
   const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'admin@accounting-saas.local';
   const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'ChangeMe123!';
   const hashedPassword = await argon2.hash(superAdminPassword);
@@ -45,13 +45,13 @@ async function main() {
     create: {
       email: superAdminEmail,
       passwordHash: hashedPassword,
-      firstName: 'Super',
-      lastName: 'Admin',
-      role: Role.SUPER_ADMIN,
+      firstName: 'Platform',
+      lastName: 'Owner',
+      role: Role.OWNER,
       status: UserStatus.ACTIVE,
     },
   });
-  console.log(`  ✓ Super Admin created: ${superAdmin.email}`);
+  console.log(`  ✓ Platform Owner created: ${superAdmin.email}`);
 
   // 3. Create Hayo tenant
   const demoTenant = await prisma.tenant.upsert({
@@ -73,9 +73,12 @@ async function main() {
   const defaultPassword = await argon2.hash('Hayo@12345');
 
   const hayoUsers = [
-    { email: 'arsalan.ali@hayo.net', firstName: 'Arsalan', lastName: 'Ali' },
-    { email: 'faisal.hussain@hayo.net', firstName: 'Faisal', lastName: 'Hussain' },
-    { email: 'ahmad.hassan@hayo.net', firstName: 'Ahmad', lastName: 'Hassan' },
+    { email: 'ceo@hayo.net', firstName: 'Feraz', lastName: 'Ahmad', role: Role.OWNER },
+    { email: 'misbah.asghar@hayo.net', firstName: 'Misbah', lastName: 'Asghar', role: Role.FINANCE_MANAGER },
+    { email: 'arsalan.ali@hayo.net', firstName: 'Arsalan', lastName: 'Ali', role: Role.ASSISTANT_MANAGER_BILLING },
+    { email: 'faisal.hussain@hayo.net', firstName: 'Muhammad', lastName: 'Faisal', role: Role.SENIOR_OFFICE_PAYMENTS },
+    { email: 'ahmad.hassan@hayo.net', firstName: 'Ahmad', lastName: 'Hassan', role: Role.SENIOR_ARAP_OFFICER },
+    { email: 'imran.abbas@kingrevolution.com', firstName: 'Imran', lastName: 'Abbas', role: Role.PAYMENT_OFFICER },
   ];
 
   for (const u of hayoUsers) {
@@ -87,12 +90,12 @@ async function main() {
         passwordHash: defaultPassword,
         firstName: u.firstName,
         lastName: u.lastName,
-        role: Role.OWNER,
+        role: u.role,
         status: UserStatus.ACTIVE,
         tenantId: demoTenant.id,
       },
     });
-    console.log(`  ✓ Owner created: ${user.email}`);
+    console.log(`  ✓ User created: ${user.email} (${user.role})`);
   }
 
   // 7. Seed Chart of Accounts for demo tenant

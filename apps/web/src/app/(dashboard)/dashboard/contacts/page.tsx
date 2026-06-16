@@ -146,7 +146,7 @@ export default function ContactsPage() {
   const [deleteError, setDeleteError] = useState('');
 
   const user = useAuthStore((s) => s.user);
-  const canManage = user?.role === 'OWNER' || user?.role === 'CHIEF_ACCOUNTANT';
+  const canManage = ['OWNER', 'ASSISTANT_MANAGER_BILLING'].includes(user?.role ?? '');
 
   // Reset to page 1 whenever filters/search/page size change.
   useEffect(() => {

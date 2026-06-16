@@ -190,7 +190,7 @@ export default function AccountsPage() {
   const [deleteError, setDeleteError] = useState('');
 
   const user = useAuthStore((s) => s.user);
-  const canManage = user?.role === 'OWNER' || user?.role === 'CHIEF_ACCOUNTANT';
+  const canManage = ['OWNER', 'FINANCE_MANAGER', 'ASSISTANT_MANAGER_BILLING'].includes(user?.role ?? '');
 
   useEffect(() => {
     loadAccounts();

@@ -628,7 +628,7 @@ const quickActionsByRole: Record<string, QuickAction[]> = {
       icon: Landmark,
     },
   ],
-  CHIEF_ACCOUNTANT: [
+  FINANCE_MANAGER: [
     {
       label: 'New Voucher',
       href: '/dashboard/vouchers?action=new',
@@ -647,7 +647,7 @@ const quickActionsByRole: Record<string, QuickAction[]> = {
     },
     { label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
   ],
-  ACCOUNTANT: [
+  ASSISTANT_MANAGER_BILLING: [
     {
       label: 'New Voucher',
       href: '/dashboard/vouchers?action=new',
@@ -655,21 +655,63 @@ const quickActionsByRole: Record<string, QuickAction[]> = {
       icon: Plus,
     },
     {
+      label: 'Chart of Accounts',
+      href: '/dashboard/accounts',
+      icon: BookOpen,
+    },
+    {
+      label: 'Bank Reconciliation',
+      href: '/dashboard/bank',
+      icon: Landmark,
+    },
+    { label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+  ],
+  SENIOR_OFFICE_PAYMENTS: [
+    {
+      label: 'New Voucher',
+      href: '/dashboard/vouchers?action=new',
+      primary: true,
+      icon: Plus,
+    },
+    { label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+    {
       label: 'Journal Entries',
       href: '/dashboard/journal',
       icon: ArrowLeftRight,
     },
+  ],
+  SENIOR_ARAP_OFFICER: [
+    {
+      label: 'New Voucher',
+      href: '/dashboard/vouchers?action=new',
+      primary: true,
+      icon: Plus,
+    },
+    {
+      label: 'Bank Reconciliation',
+      href: '/dashboard/bank',
+      icon: Landmark,
+    },
+    { label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+  ],
+  PAYMENT_OFFICER: [
+    {
+      label: 'New Voucher',
+      href: '/dashboard/vouchers?action=new',
+      primary: true,
+      icon: Plus,
+    },
     { label: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
     {
-      label: 'Chart of Accounts',
-      href: '/dashboard/accounts',
-      icon: BookOpen,
+      label: 'Journal Entries',
+      href: '/dashboard/journal',
+      icon: ArrowLeftRight,
     },
   ],
 };
 
 function QuickActionsWidget({ role }: { role: string }) {
-  const actions = quickActionsByRole[role] || quickActionsByRole.ACCOUNTANT;
+  const actions = quickActionsByRole[role] || quickActionsByRole.PAYMENT_OFFICER;
 
   return (
     <WidgetShell>
@@ -699,7 +741,7 @@ function QuickActionsWidget({ role }: { role: string }) {
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
   const tenant = useAuthStore((s) => s.tenant);
-  const role = user?.role ?? 'ACCOUNTANT';
+  const role = user?.role ?? 'PAYMENT_OFFICER';
   const currency = tenant?.baseCurrency ?? 'USD';
 
   return (
@@ -725,7 +767,7 @@ export default function DashboardPage() {
         </>
       )}
 
-      {role === 'CHIEF_ACCOUNTANT' && (
+      {role === 'FINANCE_MANAGER' && (
         <>
           <FinancialSnapshotWidget currency={currency} />
           <div className="grid gap-6 lg:grid-cols-2">
@@ -737,15 +779,19 @@ export default function DashboardPage() {
         </>
       )}
 
-      {role === 'ACCOUNTANT' && (
+      {role === 'ASSISTANT_MANAGER_BILLING' && (
         <>
-          <VouchersSummaryWidget />
-          <RecentVouchersWidget currency={currency} />
+          <FinancialSnapshotWidget currency={currency} />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <PendingApprovalsWidget currency={currency} />
+            <BankReconciliationWidget />
+          </div>
+          <RecentJournalEntriesWidget currency={currency} />
           <QuickActionsWidget role={role} />
         </>
       )}
 
-      {!['OWNER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT'].includes(role) && (
+      {['SENIOR_OFFICE_PAYMENTS', 'SENIOR_ARAP_OFFICER', 'PAYMENT_OFFICER'].includes(role) && (
         <>
           <VouchersSummaryWidget />
           <RecentVouchersWidget currency={currency} />

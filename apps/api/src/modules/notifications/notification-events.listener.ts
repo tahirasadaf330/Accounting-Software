@@ -14,7 +14,7 @@ import {
   VoucherCommentAddedPayload,
 } from './events/voucher-events';
 
-const FINANCE_ROLES = ['SUPER_ADMIN', 'OWNER', 'CHIEF_ACCOUNTANT', 'ACCOUNTANT'] as const;
+const FINANCE_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ASSISTANT_MANAGER_BILLING', 'SENIOR_OFFICE_PAYMENTS', 'SENIOR_ARAP_OFFICER', 'PAYMENT_OFFICER'] as const;
 
 @Injectable()
 export class NotificationEventsListener {
@@ -63,11 +63,11 @@ export class NotificationEventsListener {
     try {
       const recipients = await this.notificationsService.findUsersByRoles(
         payload.tenantId,
-        ['OWNER', 'CHIEF_ACCOUNTANT'],
+        ['OWNER', 'FINANCE_MANAGER', 'ASSISTANT_MANAGER_BILLING'],
       );
 
       this.logger.log(
-        `Found ${recipients.length} OWNER/CHIEF_ACCOUNTANT recipients, actorId: ${payload.actorId}`,
+        `Found ${recipients.length} OWNER/FINANCE_MANAGER/ASSISTANT_MANAGER_BILLING recipients, actorId: ${payload.actorId}`,
       );
 
       const filteredRecipients = recipients.filter(
@@ -119,10 +119,10 @@ export class NotificationEventsListener {
         recipientIds.add(payload.createdById);
       }
 
-      // Also notify all accountants (excluding the approver)
+      // Also notify all lower-tier roles (excluding the approver)
       const accountants = await this.notificationsService.findUsersByRoles(
         payload.tenantId,
-        ['ACCOUNTANT'],
+        ['SENIOR_OFFICE_PAYMENTS', 'SENIOR_ARAP_OFFICER', 'PAYMENT_OFFICER'],
       );
       for (const u of accountants) {
         if (u.id !== payload.actorId) {

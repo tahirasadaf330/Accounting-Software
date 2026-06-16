@@ -146,7 +146,7 @@ export class VouchersController {
 
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Approve a voucher (auto-posts after approval)' })
   @ApiResponse({ status: 200, description: 'Voucher approved and posted' })
   @ApiResponse({ status: 404, description: 'Voucher not found' })
@@ -161,7 +161,7 @@ export class VouchersController {
 
   @Post(':id/reject')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Reject a voucher with a reason' })
   @ApiResponse({ status: 200, description: 'Voucher rejected' })
   @ApiResponse({ status: 404, description: 'Voucher not found' })
@@ -177,7 +177,7 @@ export class VouchersController {
 
   @Post(':id/reverse')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Reverse a posted voucher' })
   @ApiResponse({ status: 200, description: 'Reversal voucher created and posted' })
   @ApiResponse({ status: 404, description: 'Voucher not found' })
@@ -217,7 +217,7 @@ export class VouchersController {
 
   @Post('import/purchase-invoices/commit')
   @ApiConsumes('multipart/form-data')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({
     summary:
       'Commit an Excel workbook of purchase invoices for a given vendor (creates PURCHASE vouchers)',
@@ -263,7 +263,7 @@ export class VouchersController {
 
   @Post('import/payment-vouchers/commit')
   @ApiConsumes('multipart/form-data')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({
     summary:
       'Commit an Excel workbook of payment vouchers (creates PAYMENT vouchers + allocations)',

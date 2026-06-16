@@ -35,7 +35,7 @@ export class ChartOfAccountsController {
   ) {}
 
   @Post()
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new account' })
   @ApiResponse({ status: 201, description: 'Account created successfully' })
@@ -67,7 +67,7 @@ export class ChartOfAccountsController {
   }
 
   @Post('templates/:templateId/apply')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Apply a chart of accounts template to the tenant' })
   @ApiParam({ name: 'templateId', description: 'Template ID', type: String })
@@ -93,7 +93,7 @@ export class ChartOfAccountsController {
   }
 
   @Patch(':id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Update an account (cannot change code or type)' })
   @ApiParam({ name: 'id', description: 'Account ID', type: String })
   @ApiResponse({ status: 200, description: 'Account updated successfully' })
@@ -108,7 +108,7 @@ export class ChartOfAccountsController {
   }
 
   @Post(':id/deactivate')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Deactivate an account' })
   @ApiParam({ name: 'id', description: 'Account ID', type: String })
@@ -123,7 +123,7 @@ export class ChartOfAccountsController {
   }
 
   @Post(':id/activate')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Activate a previously deactivated account' })
   @ApiParam({ name: 'id', description: 'Account ID', type: String })
@@ -138,7 +138,7 @@ export class ChartOfAccountsController {
   }
 
   @Delete(':id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Permanently delete an account' })
   @ApiParam({ name: 'id', description: 'Account ID', type: String })

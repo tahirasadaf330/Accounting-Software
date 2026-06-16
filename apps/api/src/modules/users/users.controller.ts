@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -28,7 +29,7 @@ import { PAGINATION_DEFAULTS } from '@accounting-saas/shared';
 @ApiTags('users')
 @ApiBearerAuth()
 @Controller('users')
-@Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+@Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -42,6 +43,7 @@ export class UsersController {
   }
 
   @Post('invite')
+  @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Invite a new user to the tenant via email' })
   async inviteUser(
     @TenantId() tenantId: string,
@@ -157,6 +159,24 @@ export class UsersController {
     }
 
     return this.usersService.activate(id);
+  }
+
+  @Delete(':id')
+  @Roles(Role.OWNER)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a user (OWNER only)' })
+  async deleteUser(
+    @Param('id', ParseUUIDPipe) id: string,
+    @TenantId() tenantId: string,
+    @CurrentUser('id') currentUserId: string,
+  ) {
+    const user = await this.usersService.findOne(id);
+
+    if (user.tenantId !== tenantId) {
+      throw new ForbiddenException('You do not have access to this user');
+    }
+
+    return this.usersService.deleteUser(id, currentUserId);
   }
 
   @Patch(':id/role')

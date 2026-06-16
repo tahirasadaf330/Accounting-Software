@@ -17,7 +17,7 @@ export class InviteUserDto {
   @MinLength(1)
   lastName: string;
 
-  @ApiProperty({ enum: [Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT] })
-  @IsEnum(Role, { message: 'Role must be CHIEF_ACCOUNTANT or ACCOUNTANT' })
+  @ApiProperty({ enum: [Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_OFFICE_PAYMENTS, Role.SENIOR_ARAP_OFFICER, Role.PAYMENT_OFFICER] })
+  @IsEnum(Role, { message: 'Role must be FINANCE_MANAGER, ASSISTANT_MANAGER_BILLING, SENIOR_OFFICE_PAYMENTS, SENIOR_ARAP_OFFICER, or PAYMENT_OFFICER' })
   role: Role;
 }

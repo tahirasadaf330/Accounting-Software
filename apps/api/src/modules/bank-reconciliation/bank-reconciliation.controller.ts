@@ -31,7 +31,7 @@ export class BankReconciliationController {
   // ---------------------------------------------------------------------------
 
   @Post('bank-accounts')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Create a bank account linked to a COA account' })
   async createBankAccount(
     @TenantId() tenantId: string,
@@ -41,14 +41,14 @@ export class BankReconciliationController {
   }
 
   @Get('bank-accounts')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_ARAP_OFFICER)
   @ApiOperation({ summary: 'List all bank accounts for the tenant' })
   async findBankAccounts(@TenantId() tenantId: string) {
     return this.bankReconciliationService.findBankAccounts(tenantId);
   }
 
   @Patch('bank-accounts/:id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Update a bank/crypto account' })
   async updateBankAccount(
     @TenantId() tenantId: string,
@@ -59,7 +59,7 @@ export class BankReconciliationController {
   }
 
   @Delete('bank-accounts/:id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Delete a bank/crypto account (only if no statements exist)' })
   async deleteBankAccount(
@@ -74,7 +74,7 @@ export class BankReconciliationController {
   // ---------------------------------------------------------------------------
 
   @Post('bank-accounts/:bankAccountId/statements')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_ARAP_OFFICER)
   @ApiOperation({ summary: 'Import a bank statement with parsed lines' })
   async importStatement(
     @TenantId() tenantId: string,
@@ -85,7 +85,7 @@ export class BankReconciliationController {
   }
 
   @Get('bank-accounts/:bankAccountId/statements')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_ARAP_OFFICER)
   @ApiOperation({ summary: 'List statements for a bank account' })
   async getStatements(
     @TenantId() tenantId: string,
@@ -95,7 +95,7 @@ export class BankReconciliationController {
   }
 
   @Get('statements/:statementId/lines')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_ARAP_OFFICER)
   @ApiOperation({ summary: 'Get lines for a bank statement' })
   async getStatementLines(
     @TenantId() tenantId: string,
@@ -109,7 +109,7 @@ export class BankReconciliationController {
   // ---------------------------------------------------------------------------
 
   @Post('reconciliations')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_ARAP_OFFICER)
   @ApiOperation({ summary: 'Start a new reconciliation for a period' })
   async startReconciliation(
     @TenantId() tenantId: string,
@@ -119,7 +119,7 @@ export class BankReconciliationController {
   }
 
   @Get('reconciliations/:id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_ARAP_OFFICER)
   @ApiOperation({ summary: 'Get reconciliation details with matches and summary' })
   async getReconciliation(
     @TenantId() tenantId: string,
@@ -130,7 +130,7 @@ export class BankReconciliationController {
 
   @Post('reconciliations/:id/auto-match')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_ARAP_OFFICER)
   @ApiOperation({ summary: 'Run auto-matching algorithm on a reconciliation' })
   async autoMatch(
     @TenantId() tenantId: string,
@@ -140,7 +140,7 @@ export class BankReconciliationController {
   }
 
   @Post('reconciliations/:id/match')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_ARAP_OFFICER)
   @ApiOperation({ summary: 'Manually match a bank statement line to a journal entry line' })
   async manualMatch(
     @TenantId() tenantId: string,
@@ -151,7 +151,7 @@ export class BankReconciliationController {
   }
 
   @Delete('reconciliations/:id/matches/:matchId')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_ARAP_OFFICER)
   @ApiOperation({ summary: 'Remove a match from a reconciliation' })
   async unmatch(
     @TenantId() tenantId: string,
@@ -162,7 +162,7 @@ export class BankReconciliationController {
   }
 
   @Get('reconciliations/:id/unmatched')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_ARAP_OFFICER)
   @ApiOperation({ summary: 'Get unmatched bank lines and journal entries' })
   async getUnmatchedItems(
     @TenantId() tenantId: string,
@@ -173,7 +173,7 @@ export class BankReconciliationController {
 
   @Post('reconciliations/:id/complete')
   @HttpCode(HttpStatus.OK)
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @ApiOperation({ summary: 'Mark a reconciliation as completed' })
   async completeReconciliation(
     @TenantId() tenantId: string,

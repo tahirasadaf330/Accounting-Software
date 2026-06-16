@@ -33,7 +33,7 @@ export class AccountManagersController {
   constructor(private readonly service: AccountManagersService) {}
 
   @Post()
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new account manager' })
   @ApiResponse({ status: 201, description: 'Account manager created' })
@@ -73,7 +73,7 @@ export class AccountManagersController {
   }
 
   @Patch(':id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Update an account manager' })
   @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 200, description: 'Account manager updated' })
@@ -87,7 +87,7 @@ export class AccountManagersController {
   }
 
   @Delete(':id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete an account manager' })
   @ApiParam({ name: 'id', type: String })

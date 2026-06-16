@@ -159,7 +159,7 @@ interface BusinessUnitsResponse {
 
 export default function BusinessUnitsPage() {
   const user = useAuthStore((s) => s.user);
-  const canManage = user?.role === 'OWNER' || user?.role === 'CHIEF_ACCOUNTANT';
+  const canManage = user?.role === 'OWNER';
 
   const [units, setUnits] = useState<BusinessUnit[]>([]);
   const [total, setTotal] = useState(0);

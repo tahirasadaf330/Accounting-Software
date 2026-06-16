@@ -33,7 +33,7 @@ export class BusinessUnitsController {
   constructor(private readonly service: BusinessUnitsService) {}
 
   @Post()
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new business unit' })
   @ApiResponse({ status: 201, description: 'Business unit created' })
@@ -72,7 +72,7 @@ export class BusinessUnitsController {
   }
 
   @Patch(':id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER)
   @ApiOperation({ summary: 'Update a business unit' })
   @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 200, description: 'Business unit updated' })
@@ -85,7 +85,7 @@ export class BusinessUnitsController {
   }
 
   @Delete(':id')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a business unit' })
   @ApiParam({ name: 'id', type: String })

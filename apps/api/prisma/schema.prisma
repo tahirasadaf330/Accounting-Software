@@ -12,10 +12,12 @@ datasource db {
 // ============================================================
 
 enum Role {
-  SUPER_ADMIN
   OWNER
-  CHIEF_ACCOUNTANT
-  ACCOUNTANT
+  FINANCE_MANAGER
+  ASSISTANT_MANAGER_BILLING
+  SENIOR_OFFICE_PAYMENTS
+  SENIOR_ARAP_OFFICER
+  PAYMENT_OFFICER
 }
 
 enum TenantStatus {

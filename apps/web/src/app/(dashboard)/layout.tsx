@@ -114,7 +114,7 @@ const navigation: NavItem[] = [
   { name: 'Currencies', href: '/dashboard/currencies', icon: DollarSign },
   { name: 'Fiscal Years', href: '/dashboard/fiscal-years', icon: Calendar },
   { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
-  { name: 'Users', href: '/dashboard/users', icon: Users },
+  { name: 'Users', href: '/dashboard/users', icon: Users, roles: ['OWNER', 'FINANCE_MANAGER', 'ASSISTANT_MANAGER_BILLING'] },
   { name: 'Business Units', href: '/dashboard/business-units', icon: Layers },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
@@ -211,7 +211,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Nav links */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="space-y-1">
-            {navigation.map((item) => {
+            {navigation.filter((item) => !item.roles || item.roles.includes(user?.role ?? '')).map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== '/dashboard' && pathname.startsWith(item.href));

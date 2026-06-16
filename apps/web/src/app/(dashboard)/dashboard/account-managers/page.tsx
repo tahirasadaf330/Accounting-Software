@@ -203,7 +203,7 @@ interface AccountManagersResponse {
 
 export default function AccountManagersPage() {
   const user = useAuthStore((s) => s.user);
-  const canManage = user?.role === 'OWNER' || user?.role === 'CHIEF_ACCOUNTANT';
+  const canManage = user?.role === 'OWNER';
 
   const [managers, setManagers] = useState<AccountManager[]>([]);
   const [total, setTotal] = useState(0);

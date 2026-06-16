@@ -24,7 +24,7 @@ export class PaymentAllocationsController {
   constructor(private readonly service: PaymentAllocationsService) {}
 
   @Post(':paymentVoucherId')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT, Role.ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING, Role.SENIOR_OFFICE_PAYMENTS, Role.SENIOR_ARAP_OFFICER, Role.PAYMENT_OFFICER)
   @ApiOperation({ summary: 'Allocate a payment to invoices' })
   allocate(
     @TenantId() tenantId: string,
@@ -77,7 +77,7 @@ export class PaymentAllocationsController {
   }
 
   @Delete(':allocationId')
-  @Roles(Role.OWNER, Role.CHIEF_ACCOUNTANT)
+  @Roles(Role.OWNER, Role.FINANCE_MANAGER, Role.ASSISTANT_MANAGER_BILLING)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a payment allocation' })
   async deleteAllocation(
