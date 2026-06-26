@@ -6,6 +6,7 @@
     "webpack": true,
     "tsConfigPath": "tsconfig.build.json",
     "deleteOutDir": true,
+    "webpackConfigPath": "webpack.config.js",
     "assets": [
       { "include": "modules/mail/templates/**/*.hbs", "outDir": "dist", "watchAssets": true }
     ],

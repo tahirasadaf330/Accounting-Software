@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AllocatePaymentDto } from './dto/allocate-payment.dto';
 import { Prisma, VoucherType, VoucherStatus } from '@prisma/client';
+import Decimal from 'decimal.js';
 import { computeBillingPeriod } from '../../common/utils/billing-period';
 
 @Injectable()
@@ -135,14 +136,14 @@ export class PaymentAllocationsService {
       );
     }
 
-    const created = [];
+    const created: object[] = [];
     for (const a of allocations.filter((x) => x.amount > 0)) {
       const row = await tx.paymentAllocation.create({
         data: {
           tenantId,
           paymentVoucherId: payment.id,
           invoiceVoucherId: a.invoiceVoucherId,
-          amount: new Prisma.Decimal(a.amount.toFixed(4)),
+          amount: new Decimal(a.amount.toFixed(4)),
           paidAt: new Date(a.paidAt),
         },
       });
@@ -171,7 +172,7 @@ export class PaymentAllocationsService {
       select: { billingStartDate: true, paymentTermDays: true },
     });
 
-    // RECEIPT → show only SALES invoices, PAYMENT → show only PURCHASE invoices
+    // RECEIPT â†’ show only SALES invoices, PAYMENT â†’ show only PURCHASE invoices
     let invoiceTypes: VoucherType[];
     if (paymentType === 'RECEIPT') {
       invoiceTypes = [VoucherType.SALES];
@@ -351,3 +352,4 @@ export class PaymentAllocationsService {
     };
   }
 }
+

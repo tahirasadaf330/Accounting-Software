@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   BadRequestException,
   NotFoundException,
@@ -278,7 +278,7 @@ export class VouchersService {
 
   /**
    * Create a new voucher with line items, directly as POSTED.
-   * The approval pipeline (DRAFT → PENDING_APPROVAL → APPROVED → POSTED) has
+   * The approval pipeline (DRAFT â†’ PENDING_APPROVAL â†’ APPROVED â†’ POSTED) has
    * been removed: every new voucher is posted in one atomic transaction.
    */
   async create(tenantId: string, userId: string, dto: CreateVoucherDto) {
@@ -310,14 +310,14 @@ export class VouchersService {
         return {
           tenantId,
           accountId: li.accountId,
-          debit: new Prisma.Decimal(debit.toFixed(4)),
-          credit: new Prisma.Decimal(credit.toFixed(4)),
+          debit: new Decimal(debit.toFixed(4)),
+          credit: new Decimal(credit.toFixed(4)),
           currencyCode: li.currencyCode || dto.currencyCode || 'USD',
-          exchangeRate: new Prisma.Decimal(
+          exchangeRate: new Decimal(
             toDecimal(lineExchangeRate).toFixed(8),
           ),
-          baseDebit: new Prisma.Decimal(baseDebit.toFixed(4)),
-          baseCredit: new Prisma.Decimal(baseCredit.toFixed(4)),
+          baseDebit: new Decimal(baseDebit.toFixed(4)),
+          baseCredit: new Decimal(baseCredit.toFixed(4)),
           narration: li.narration || null,
           costCenter: li.costCenter || null,
           lineOrder: index + 1,
@@ -334,9 +334,9 @@ export class VouchersService {
           date: voucherDate,
           narration: dto.narration,
           reference: dto.reference || null,
-          totalAmount: new Prisma.Decimal(totalDebits.toFixed(4)),
+          totalAmount: new Decimal(totalDebits.toFixed(4)),
           currencyCode: dto.currencyCode || 'USD',
-          exchangeRate: new Prisma.Decimal(
+          exchangeRate: new Decimal(
             toDecimal(voucherExchangeRate).toFixed(8),
           ),
           createdById: userId,
@@ -429,14 +429,14 @@ export class VouchersService {
         return {
           tenantId,
           accountId: li.accountId,
-          debit: new Prisma.Decimal(debit.toFixed(4)),
-          credit: new Prisma.Decimal(credit.toFixed(4)),
+          debit: new Decimal(debit.toFixed(4)),
+          credit: new Decimal(credit.toFixed(4)),
           currencyCode: li.currencyCode || voucherDto.currencyCode || 'USD',
-          exchangeRate: new Prisma.Decimal(
+          exchangeRate: new Decimal(
             toDecimal(lineExchangeRate).toFixed(8),
           ),
-          baseDebit: new Prisma.Decimal(baseDebit.toFixed(4)),
-          baseCredit: new Prisma.Decimal(baseCredit.toFixed(4)),
+          baseDebit: new Decimal(baseDebit.toFixed(4)),
+          baseCredit: new Decimal(baseCredit.toFixed(4)),
           narration: li.narration || null,
           costCenter: li.costCenter || null,
           lineOrder: index + 1,
@@ -453,9 +453,9 @@ export class VouchersService {
           date: voucherDate,
           narration: voucherDto.narration,
           reference: voucherDto.reference || null,
-          totalAmount: new Prisma.Decimal(totalDebits.toFixed(4)),
+          totalAmount: new Decimal(totalDebits.toFixed(4)),
           currencyCode: voucherDto.currencyCode || 'USD',
-          exchangeRate: new Prisma.Decimal(
+          exchangeRate: new Decimal(
             toDecimal(voucherExchangeRate).toFixed(8),
           ),
           createdById: userId,
@@ -555,12 +555,12 @@ export class VouchersService {
         return {
           tenantId,
           accountId: li.accountId,
-          debit: new Prisma.Decimal(debit.toFixed(4)),
-          credit: new Prisma.Decimal(credit.toFixed(4)),
+          debit: new Decimal(debit.toFixed(4)),
+          credit: new Decimal(credit.toFixed(4)),
           currencyCode: li.currencyCode || voucherDto.currencyCode || 'USD',
-          exchangeRate: new Prisma.Decimal(toDecimal(lineExchangeRate).toFixed(8)),
-          baseDebit: new Prisma.Decimal(baseDebit.toFixed(4)),
-          baseCredit: new Prisma.Decimal(baseCredit.toFixed(4)),
+          exchangeRate: new Decimal(toDecimal(lineExchangeRate).toFixed(8)),
+          baseDebit: new Decimal(baseDebit.toFixed(4)),
+          baseCredit: new Decimal(baseCredit.toFixed(4)),
           narration: li.narration || null,
           costCenter: li.costCenter || null,
           lineOrder: index + 1,
@@ -577,9 +577,9 @@ export class VouchersService {
           date: voucherDate,
           narration: voucherDto.narration,
           reference: voucherDto.reference || null,
-          totalAmount: new Prisma.Decimal(totalDebits.toFixed(4)),
+          totalAmount: new Decimal(totalDebits.toFixed(4)),
           currencyCode: voucherDto.currencyCode || 'USD',
-          exchangeRate: new Prisma.Decimal(toDecimal(voucherExchangeRate).toFixed(8)),
+          exchangeRate: new Decimal(toDecimal(voucherExchangeRate).toFixed(8)),
           createdById: userId,
           approvedById: userId,
           postedAt: now,
@@ -635,7 +635,7 @@ export class VouchersService {
                 tenantId,
                 paymentVoucherId: voucher.id,
                 invoiceVoucherId: inv.id,
-                amount: new Prisma.Decimal(allocAmt.toFixed(4)),
+                amount: new Decimal(allocAmt.toFixed(4)),
                 paidAt: new Date(alloc.paidAt),
               },
             });
@@ -767,7 +767,7 @@ export class VouchersService {
       // Numeric match against totalAmount
       const numeric = Number(term.replace(/[, ]/g, ''));
       if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
-        orConditions.push({ totalAmount: new Prisma.Decimal(numeric) });
+        orConditions.push({ totalAmount: new Decimal(numeric) });
       }
 
       // Date match (YYYY-MM-DD) against the voucher date
@@ -897,7 +897,7 @@ export class VouchersService {
         updateData.currencyCode = dto.currencyCode;
       }
       if (dto.exchangeRate !== undefined) {
-        updateData.exchangeRate = new Prisma.Decimal(
+        updateData.exchangeRate = new Decimal(
           toDecimal(dto.exchangeRate).toFixed(8),
         );
       }
@@ -938,14 +938,14 @@ export class VouchersService {
             tenantId,
             voucherId: id,
             accountId: li.accountId,
-            debit: new Prisma.Decimal(debit.toFixed(4)),
-            credit: new Prisma.Decimal(credit.toFixed(4)),
+            debit: new Decimal(debit.toFixed(4)),
+            credit: new Decimal(credit.toFixed(4)),
             currencyCode: li.currencyCode || dto.currencyCode || 'USD',
-            exchangeRate: new Prisma.Decimal(
+            exchangeRate: new Decimal(
               toDecimal(lineExchangeRate).toFixed(8),
             ),
-            baseDebit: new Prisma.Decimal(baseDebit.toFixed(4)),
-            baseCredit: new Prisma.Decimal(baseCredit.toFixed(4)),
+            baseDebit: new Decimal(baseDebit.toFixed(4)),
+            baseCredit: new Decimal(baseCredit.toFixed(4)),
             narration: li.narration || null,
             costCenter: li.costCenter || null,
             lineOrder: index + 1,
@@ -954,7 +954,7 @@ export class VouchersService {
 
         await tx.voucherLineItem.createMany({ data: lineItemsData });
 
-        updateData.totalAmount = new Prisma.Decimal(totalDebits.toFixed(4));
+        updateData.totalAmount = new Decimal(totalDebits.toFixed(4));
       }
 
       const voucher = await tx.voucher.update({
@@ -1503,7 +1503,7 @@ export class VouchersService {
     return result.reversalResult;
   }
 
-  // ─── Attachment Methods ──────────────────────────────────────────
+  // â”€â”€â”€ Attachment Methods â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async uploadAttachment(
     tenantId: string,
@@ -1652,7 +1652,7 @@ export class VouchersService {
     });
   }
 
-  // ─── Comment Methods ─────────────────────────────────────────────
+  // â”€â”€â”€ Comment Methods â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async listComments(tenantId: string, voucherId: string) {
     const voucher = await this.prisma.voucher.findFirst({
@@ -1818,7 +1818,7 @@ export class VouchersService {
     };
   }
 
-  // ─── Mark Paid ──────────────────────────────────────────────────
+  // â”€â”€â”€ Mark Paid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   //
   // Creates a real PAYMENT (for AP) or RECEIPT (for AR) voucher allocated
   // against the invoice, in one transaction. After this runs, the invoice's
@@ -1931,10 +1931,10 @@ export class VouchersService {
     const paymentDateStr = paymentDate.toISOString().split('T')[0];
 
     // Double-entry:
-    //   AP (settling a purchase invoice → cash leaves):
+    //   AP (settling a purchase invoice â†’ cash leaves):
     //     Dr Trade Payable (contact's trade account)
     //     Cr Bank
-    //   AR (settling a sales invoice → cash arrives):
+    //   AR (settling a sales invoice â†’ cash arrives):
     //     Dr Bank
     //     Cr Trade Receivable (contact's trade account)
     const lineItems = isAP
@@ -1990,7 +1990,7 @@ export class VouchersService {
       await fs.mkdir(absoluteDir, { recursive: true });
       await fs.writeFile(absolutePath, opts.file.buffer);
 
-      // Attach directly via Prisma — bypasses the DRAFT-only restriction
+      // Attach directly via Prisma â€” bypasses the DRAFT-only restriction
       // because createWithAllocations posts the voucher immediately and we
       // still need to associate the proof with it.
       await this.prisma.voucherAttachment.create({
@@ -2023,7 +2023,7 @@ export class VouchersService {
       amount: amountStr,
       paymentDate: paymentDateStr,
       isAR: !isAP,
-      contactName: invoice.contact?.name || '—',
+      contactName: invoice.contact?.name || 'â€”',
       actorId: userId,
       actorName,
     });
@@ -2036,3 +2036,4 @@ export class VouchersService {
     };
   }
 }
+
