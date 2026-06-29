@@ -33,13 +33,23 @@ function resolveEntity(url: string): string {
   return 'Unknown';
 }
 
-function resolveEntityId(url: string, responseBody: any): string {
-  // Try to get id from response
-  if (responseBody?.id) return String(responseBody.id);
-  // Try to get from URL (last UUID segment)
-  const uuidMatch = url.match(/[0-9a-f-]{36}/i);
-  if (uuidMatch) return uuidMatch[0];
-  return 'unknown';
+function resolveEntityLabel(entityType: string, responseBody: any): string {
+  if (!responseBody) return 'unknown';
+  switch (entityType) {
+    case 'Voucher': return responseBody.voucherNumber ?? responseBody.id ?? 'unknown';
+    case 'Contact': return responseBody.name ?? responseBody.id ?? 'unknown';
+    case 'Account': return responseBody.code ? `${responseBody.code} - ${responseBody.name}` : (responseBody.name ?? responseBody.id ?? 'unknown');
+    case 'User': return responseBody.email ?? responseBody.id ?? 'unknown';
+    case 'FiscalYear': return responseBody.name ?? responseBody.id ?? 'unknown';
+    case 'NettingCycle': return responseBody.id ?? 'unknown';
+    case 'BusinessUnit': return responseBody.name ?? responseBody.id ?? 'unknown';
+    case 'AccountManager': return responseBody.name ?? responseBody.id ?? 'unknown';
+    case 'Currency': return responseBody.code ?? responseBody.id ?? 'unknown';
+    default: {
+      const uuidMatch = (responseBody.id ?? '').toString();
+      return uuidMatch || 'unknown';
+    }
+  }
 }
 
 @Injectable()
@@ -64,9 +74,10 @@ export class ActivityLogInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap((responseBody) => {
-        const entityId = resolveEntityId(url, responseBody);
+        const entityId = responseBody?.id ?? 'unknown';
+        const entityLabel = resolveEntityLabel(entityType, responseBody);
         const userName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email;
-        const description = `${userName} ${action} ${entityType} ${entityId}`;
+        const description = `${userName} ${action} ${entityType} ${entityLabel}`;
 
         this.activityLogsService.log({
           tenantId: user.tenantId ?? undefined,
