@@ -22,6 +22,7 @@ import { authenticator } from 'otplib';
 import * as QRCode from 'qrcode';
 import { v4 as uuid } from 'uuid';
 import { Role, TenantStatus, UserStatus, InvitationStatus } from '@prisma/client';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 
 @Injectable()
 export class AuthService {
@@ -32,6 +33,7 @@ export class AuthService {
     private jwtService: JwtService,
     private config: ConfigService,
     private mailService: MailService,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -144,6 +146,15 @@ export class AuthService {
 
     const tokens = await this.generateTokens(user);
 
+    this.activityLogs.log({
+      tenantId: user.tenantId ?? undefined,
+      userId: user.id,
+      action: 'login',
+      entityType: 'User',
+      entityId: user.id,
+      description: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() + ` logged in`,
+    });
+
     return {
       user: {
         id: user.id,
@@ -199,6 +210,18 @@ export class AuthService {
     } else {
       await this.prisma.refreshToken.deleteMany({
         where: { userId },
+      });
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user) {
+      this.activityLogs.log({
+        tenantId: user.tenantId ?? undefined,
+        userId: user.id,
+        action: 'logout',
+        entityType: 'User',
+        entityId: user.id,
+        description: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() + ` logged out`,
       });
     }
   }

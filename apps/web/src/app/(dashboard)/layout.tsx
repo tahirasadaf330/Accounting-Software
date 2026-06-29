@@ -68,6 +68,7 @@ import {
   FileSpreadsheet,
   ClipboardList,
   ClipboardCheck,
+  Activity,
 } from 'lucide-react';
 
 interface NavItem {
@@ -116,6 +117,7 @@ const navigation: NavItem[] = [
   { name: 'Fiscal Years', href: '/dashboard/fiscal-years', icon: Calendar },
   { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
   { name: 'Users', href: '/dashboard/users', icon: Users, roles: ['OWNER', 'FINANCE_MANAGER', 'ASSISTANT_MANAGER_BILLING'] },
+  { name: 'Activity Logs', href: '/dashboard/activity-logs', icon: Activity, roles: ['OWNER', 'FINANCE_MANAGER'] },
   { name: 'Business Units', href: '/dashboard/business-units', icon: Layers },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
