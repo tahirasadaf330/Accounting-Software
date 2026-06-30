@@ -19,6 +19,9 @@ import { AccountManagersModule } from './modules/account-managers/account-manage
 import { BusinessUnitsModule } from './modules/business-units/business-units.module';
 import { PaymentAllocationsModule } from './modules/payment-allocations/payment-allocations.module';
 import { NettingCyclesModule } from './modules/netting-cycles/netting-cycles.module';
+import { ActivityLogsModule } from './modules/activity-logs/activity-logs.module';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ActivityLogInterceptor } from './common/interceptors/activity-log.interceptor';
 
 @Module({
   imports: [
@@ -45,6 +48,10 @@ import { NettingCyclesModule } from './modules/netting-cycles/netting-cycles.mod
     BusinessUnitsModule,
     PaymentAllocationsModule,
     NettingCyclesModule,
+    ActivityLogsModule,
+  ],
+  providers: [
+    { provide: APP_INTERCEPTOR, useClass: ActivityLogInterceptor },
   ],
 })
 export class AppModule {}

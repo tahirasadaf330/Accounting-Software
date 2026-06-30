@@ -325,7 +325,7 @@ export class VouchersController {
     @Req() req: FastifyRequest,
   ) {
     const parts = req.parts();
-    const attachments = [];
+    const attachments: object[] = [];
 
     for await (const part of parts) {
       if (part.type === 'file') {

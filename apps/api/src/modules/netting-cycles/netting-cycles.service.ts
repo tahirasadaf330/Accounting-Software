@@ -103,7 +103,7 @@ export class NettingCyclesService {
       orderBy: { startDate: 'desc' },
     });
 
-    const results = [];
+    const results: Awaited<ReturnType<typeof this.formatCycle>>[] = [];
     for (const cycle of cycles) {
       results.push(await this.formatCycle(cycle, tenantId));
     }
@@ -121,7 +121,7 @@ export class NettingCyclesService {
       orderBy: { startDate: 'asc' },
     });
 
-    const results = [];
+    const results: object[] = [];
     for (const cycle of cycles) {
       const linkedIds = cycle.invoices.map((i) => i.voucherId);
       const invoices = await this.prisma.voucher.findMany({
