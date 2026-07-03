@@ -103,6 +103,28 @@ async function main() {
     console.log(`  ✓ User upserted: ${user.email} (${user.role})`);
   }
 
+  // Additional user: Ali (Finance Manager)
+  const aliPassword = await argon2.hash('hayo@123');
+  const aliUser = await prisma.user.upsert({
+    where: { email: 'ali@hayo.net' },
+    update: {
+      role: Role.FINANCE_MANAGER,
+      firstName: 'Ali',
+      lastName: '',
+      tenantId: demoTenant.id,
+    },
+    create: {
+      email: 'ali@hayo.net',
+      passwordHash: aliPassword,
+      firstName: 'Ali',
+      lastName: '',
+      role: Role.FINANCE_MANAGER,
+      status: UserStatus.ACTIVE,
+      tenantId: demoTenant.id,
+    },
+  });
+  console.log(`  ✓ User upserted: ${aliUser.email} (${aliUser.role})`);
+
   // 7. Seed Chart of Accounts for demo tenant
   const accounts = [
     // Level 1: Categories
