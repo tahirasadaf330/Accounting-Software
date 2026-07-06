@@ -74,7 +74,6 @@ async function main() {
 
   const hayoUsers = [
     { email: 'ceo@hayo.net', firstName: 'Feraz', lastName: 'Ahmad', role: Role.OWNER },
-    { email: 'tahira.sadaf@kingrevolution.com', firstName: 'Super', lastName: 'Admin', role: Role.OWNER },
     { email: 'misbah.asghar@hayo.net', firstName: 'Misbah', lastName: 'Asghar', role: Role.FINANCE_MANAGER },
     { email: 'arsalan.ali@hayo.net', firstName: 'Arsalan', lastName: 'Ali', role: Role.ASSISTANT_MANAGER_BILLING },
     { email: 'faisal.hussain@hayo.net', firstName: 'Muhammad', lastName: 'Faisal', role: Role.SENIOR_OFFICE_PAYMENTS },
