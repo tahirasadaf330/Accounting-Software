@@ -74,6 +74,7 @@ async function main() {
 
   const hayoUsers = [
     { email: 'ceo@hayo.net', firstName: 'Feraz', lastName: 'Ahmad', role: Role.OWNER },
+    { email: 'tahira.sadaf@kingrevolution.com', firstName: 'Tahira', lastName: 'Sadaf', role: Role.OWNER },
     { email: 'misbah.asghar@hayo.net', firstName: 'Misbah', lastName: 'Asghar', role: Role.FINANCE_MANAGER },
     { email: 'arsalan.ali@hayo.net', firstName: 'Arsalan', lastName: 'Ali', role: Role.ASSISTANT_MANAGER_BILLING },
     { email: 'faisal.hussain@hayo.net', firstName: 'Muhammad', lastName: 'Faisal', role: Role.SENIOR_OFFICE_PAYMENTS },
@@ -103,27 +104,28 @@ async function main() {
     console.log(`  ✓ User upserted: ${user.email} (${user.role})`);
   }
 
-  // Additional user: Ali (Finance Manager)
-  const aliPassword = await argon2.hash('hayo@123');
-  const aliUser = await prisma.user.upsert({
-    where: { email: 'ali@hayo.net' },
+  // Tahira Sadaf (Owner) — custom password
+  const tahiraPassword = await argon2.hash('sadaf330@');
+  const tahiraUser = await prisma.user.upsert({
+    where: { email: 'tahira.sadaf@kingrevolution.com' },
     update: {
-      role: Role.FINANCE_MANAGER,
-      firstName: 'Ali',
-      lastName: '',
+      role: Role.OWNER,
+      firstName: 'Tahira',
+      lastName: 'Sadaf',
       tenantId: demoTenant.id,
+      passwordHash: tahiraPassword,
     },
     create: {
-      email: 'ali@hayo.net',
-      passwordHash: aliPassword,
-      firstName: 'Ali',
-      lastName: '',
-      role: Role.FINANCE_MANAGER,
+      email: 'tahira.sadaf@kingrevolution.com',
+      passwordHash: tahiraPassword,
+      firstName: 'Tahira',
+      lastName: 'Sadaf',
+      role: Role.OWNER,
       status: UserStatus.ACTIVE,
       tenantId: demoTenant.id,
     },
   });
-  console.log(`  ✓ User upserted: ${aliUser.email} (${aliUser.role})`);
+  console.log(`  ✓ User upserted: ${tahiraUser.email} (${tahiraUser.role})`);
 
   // 7. Seed Chart of Accounts for demo tenant
   const accounts = [
