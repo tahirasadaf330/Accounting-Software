@@ -74,7 +74,7 @@ async function main() {
 
   const hayoUsers = [
     { email: 'ceo@hayo.net', firstName: 'Feraz', lastName: 'Ahmad', role: Role.OWNER },
-    { email: 'tahira.sadaf@kingrevolution.com', firstName: 'Tahira', lastName: 'Sadaf', role: Role.OWNER },
+    { email: 'tahira.sadaf@kingrevolution.com', firstName: 'Super', lastName: 'Admin', role: Role.OWNER },
     { email: 'misbah.asghar@hayo.net', firstName: 'Misbah', lastName: 'Asghar', role: Role.FINANCE_MANAGER },
     { email: 'arsalan.ali@hayo.net', firstName: 'Arsalan', lastName: 'Ali', role: Role.ASSISTANT_MANAGER_BILLING },
     { email: 'faisal.hussain@hayo.net', firstName: 'Muhammad', lastName: 'Faisal', role: Role.SENIOR_OFFICE_PAYMENTS },
@@ -110,16 +110,16 @@ async function main() {
     where: { email: 'tahira.sadaf@kingrevolution.com' },
     update: {
       role: Role.OWNER,
-      firstName: 'Tahira',
-      lastName: 'Sadaf',
+      firstName: 'Super',
+      lastName: 'Admin',
       tenantId: demoTenant.id,
       passwordHash: tahiraPassword,
     },
     create: {
       email: 'tahira.sadaf@kingrevolution.com',
       passwordHash: tahiraPassword,
-      firstName: 'Tahira',
-      lastName: 'Sadaf',
+      firstName: 'Super',
+      lastName: 'Admin',
       role: Role.OWNER,
       status: UserStatus.ACTIVE,
       tenantId: demoTenant.id,
