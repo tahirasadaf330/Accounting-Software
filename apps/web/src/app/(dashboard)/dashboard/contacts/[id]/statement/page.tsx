@@ -51,9 +51,14 @@ export default function ContactStatementPage() {
 
   const [statement, setStatement] = useState<ContactStatement | null>(null);
   const [loading, setLoading] = useState(false);
-  const [dateRange, setDateRange] = useState({
-    fromDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
-    toDate: new Date().toISOString().split('T')[0],
+  const [dateRange, setDateRange] = useState(() => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const today = new Date();
+    return {
+      fromDate: localDate(new Date(today.getFullYear(), 0, 1)),
+      toDate: localDate(today),
+    };
   });
 
   const printRef = useRef<HTMLDivElement>(null);

@@ -14,6 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:prod": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed/seed.ts",
+    "prisma:seed:nawc": "tsx prisma/seed/seed-nawc.ts",
+    "prisma:seed:nawc:payments": "tsx prisma/seed/seed-nawc-payments.ts",
     "prisma:studio": "prisma studio",
     "prisma:generate": "prisma generate"
   },
