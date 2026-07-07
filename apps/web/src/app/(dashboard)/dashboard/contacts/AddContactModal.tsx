@@ -7,6 +7,27 @@ import { cn } from '@/lib/cn';
 import CurrencySelect from '@/components/CurrencySelect';
 
 type PaymentMethod = 'WIRE' | 'ACH' | 'USDT';
+type ImportSource = 'jerasoft' | 'asmse';
+
+interface ExternalContact {
+  externalId: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+  taxId?: string;
+  currencyCode?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
+  bankIban?: string;
+  bankSwiftCode?: string;
+  bankBeneficiaryName?: string;
+  creditLimit?: number;
+}
 type AccountClassification = 'PREPAYMENT' | 'POSTPAYMENT';
 
 function MultiSelectDropdown({
@@ -134,6 +155,12 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  // Import from external DB
+  const [importSource, setImportSource] = useState<ImportSource | ''>('');
+  const [externalContacts, setExternalContacts] = useState<ExternalContact[]>([]);
+  const [externalSearch, setExternalSearch] = useState('');
+  const [importLoading, setImportLoading] = useState(false);
+
   useEffect(() => {
     if (open) {
       setContactType('CUSTOMER');
@@ -168,6 +195,9 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
       setError('');
       setFieldErrors({});
       setSubmitting(false);
+      setImportSource('');
+      setExternalContacts([]);
+      setExternalSearch('');
       loadAccounts();
       loadAccountManagers();
       loadBusinessUnits();
@@ -209,6 +239,45 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
     } catch {
       setBusinessUnits([]);
     }
+  };
+
+  const loadExternalContacts = async (source: ImportSource) => {
+    setImportLoading(true);
+    setExternalContacts([]);
+    setExternalSearch('');
+    try {
+      const data = await api.get<ExternalContact[]>(
+        `/external-db/${source}/contacts`,
+        { type: contactType },
+      );
+      setExternalContacts(data);
+    } catch {
+      setExternalContacts([]);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const applyExternalContact = (c: ExternalContact) => {
+    if (c.name) setName(c.name);
+    if (c.email) setEmail(c.email);
+    if (c.phone) setPhone(c.phone);
+    if (c.address) setAddress(c.address);
+    if (c.city) setCity(c.city);
+    if (c.state) setState(c.state);
+    if (c.country) setCountry(c.country);
+    if (c.postalCode) setPostalCode(c.postalCode);
+    if (c.taxId) setTaxId(c.taxId);
+    if (c.currencyCode && ['USD', 'EUR', 'GBP'].includes(c.currencyCode)) setCurrencyCode(c.currencyCode);
+    if (c.bankAccountNumber) setBankAccountNumber(c.bankAccountNumber);
+    if (c.bankName) setBankName(c.bankName);
+    if (c.bankIban) setBankIban(c.bankIban);
+    if (c.bankSwiftCode) setBankSwiftCode(c.bankSwiftCode);
+    if (c.bankBeneficiaryName) setBankBeneficiaryName(c.bankBeneficiaryName);
+    if (c.creditLimit != null) setCreditLimit(String(c.creditLimit));
+    // collapse the import panel after selection
+    setImportSource('');
+    setExternalContacts([]);
   };
 
   const validate = (): boolean => {
@@ -340,6 +409,74 @@ export default function AddContactModal({ open, onClose, onSuccess }: Props) {
                     </label>
                   ))}
                 </div>
+              </div>
+
+              {/* Import from external DB */}
+              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
+                <label className="mb-2 block text-sm font-medium text-gray-700">Import from External System</label>
+                <div className="flex gap-2">
+                  {(['jerasoft', 'asmse'] as ImportSource[]).map((src) => (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => {
+                        if (importSource === src) {
+                          setImportSource('');
+                          setExternalContacts([]);
+                        } else {
+                          setImportSource(src);
+                          loadExternalContacts(src);
+                        }
+                      }}
+                      className={cn(
+                        'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors',
+                        importSource === src
+                          ? 'border-primary-500 bg-primary-50 text-primary-700'
+                          : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400',
+                      )}
+                    >
+                      {src === 'jerasoft' ? 'Jerasoft' : 'ASMSE'}
+                    </button>
+                  ))}
+                </div>
+
+                {importSource && (
+                  <div className="mt-3">
+                    <input
+                      type="text"
+                      placeholder="Search contacts..."
+                      value={externalSearch}
+                      onChange={(e) => setExternalSearch(e.target.value)}
+                      className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                    />
+                    {importLoading ? (
+                      <p className="py-4 text-center text-sm text-gray-400">Loading contacts...</p>
+                    ) : externalContacts.length === 0 ? (
+                      <p className="py-4 text-center text-sm text-gray-400">No contacts found</p>
+                    ) : (
+                      <ul className="max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                        {externalContacts
+                          .filter((c) =>
+                            !externalSearch ||
+                            c.name.toLowerCase().includes(externalSearch.toLowerCase()) ||
+                            (c.email ?? '').toLowerCase().includes(externalSearch.toLowerCase()),
+                          )
+                          .map((c) => (
+                            <li key={c.externalId}>
+                              <button
+                                type="button"
+                                onClick={() => applyExternalContact(c)}
+                                className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-primary-50"
+                              >
+                                <span className="font-medium text-gray-900">{c.name}</span>
+                                {c.email && <span className="text-xs text-gray-500">{c.email}</span>}
+                              </button>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Name */}

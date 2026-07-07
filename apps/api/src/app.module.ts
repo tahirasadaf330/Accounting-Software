@@ -19,6 +19,7 @@ import { AccountManagersModule } from './modules/account-managers/account-manage
 import { BusinessUnitsModule } from './modules/business-units/business-units.module';
 import { PaymentAllocationsModule } from './modules/payment-allocations/payment-allocations.module';
 import { NettingCyclesModule } from './modules/netting-cycles/netting-cycles.module';
+import { ExternalDbModule } from './modules/external-db/external-db.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { NettingCyclesModule } from './modules/netting-cycles/netting-cycles.mod
     BusinessUnitsModule,
     PaymentAllocationsModule,
     NettingCyclesModule,
+    ExternalDbModule,
   ],
 })
 export class AppModule {}
