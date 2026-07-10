@@ -13,6 +13,8 @@
     "prisma:seed": "pnpm --filter api prisma:seed",
     "prisma:seed:nawc": "pnpm --filter api prisma:seed:nawc",
     "prisma:seed:nawc:payments": "pnpm --filter api prisma:seed:nawc:payments",
+    "prisma:seed:hotnet": "pnpm --filter api prisma:seed:hotnet",
+    "prisma:seed:hotnet:payments": "pnpm --filter api prisma:seed:hotnet:payments",
     "prisma:studio": "pnpm --filter api prisma:studio",
     "prisma:generate": "pnpm --filter api prisma:generate"
   },

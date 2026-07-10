@@ -135,13 +135,24 @@ export class StatementOfAccountService {
           ? entryDate.toISOString().split('T')[0]
           : String(entryDate).split('T')[0];
 
-      // Track latest due date (periodEnd + contact's payment terms in days) for closing balance
+      // Track latest due date for closing balance.
+      // Terms of 30 follow the "end of the following month" (EOM) convention
+      // (e.g. period ending 30-Jun is due 31-Jul); any other term is a plain
+      // day count (periodEnd + termDays), e.g. weekly contacts.
       const periodEnd = line.journalEntry.voucher.periodEnd;
       if (periodEnd) {
-        const d = new Date(periodEnd);
         const termDays = line.journalEntry.voucher.contact?.paymentTermDays || 1;
-        d.setDate(d.getDate() + termDays);
-        const dueDate = d.toISOString().split('T')[0];
+        let dueDate: string;
+        if (termDays === 30) {
+          const pe = new Date(periodEnd);
+          // day 0 of (month + 2) = last day of the month following periodEnd
+          const eom = new Date(Date.UTC(pe.getUTCFullYear(), pe.getUTCMonth() + 2, 0));
+          dueDate = eom.toISOString().split('T')[0];
+        } else {
+          const d = new Date(periodEnd);
+          d.setDate(d.getDate() + termDays);
+          dueDate = d.toISOString().split('T')[0];
+        }
         if (!latestDueDate || dueDate > latestDueDate) {
           latestDueDate = dueDate;
         }
