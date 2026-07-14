@@ -2,11 +2,35 @@ import { PrismaClient, VoucherType, VoucherStatus, ContactType } from '@prisma/c
 
 const prisma = new PrismaClient();
 
-// Fixed UUID-format IDs — safe to use with ParseUUIDPipe
-const HOTNET_CONTACT_ID = 'b1b2b3b4-c1c2-d1d2-e1e2-f1f2f3f4f501';
+// Fixed IDs. The contact ID must be a *valid* UUID (correct version/variant
+// nibbles) because the create-voucher DTO validates contactId with @IsUUID().
+const HOTNET_CONTACT_ID = 'b1b2b3b4-c1c2-41d2-81e2-f1f2f3f4f501';
 const HOTNET_ACCOUNT_ID = 'b1b2b3b4-c1c2-d1d2-e1e2-f1f2f3f4f502';
 
+// Earlier seed used an invalid-UUID contact ID; migrate it to the valid one.
+const HOTNET_OLD_CONTACT_ID = 'b1b2b3b4-c1c2-d1d2-e1e2-f1f2f3f4f501';
+
 const CONTACT_NAME = 'HOT NET INTERNET SERVICES LTD';
+
+// Move a contact (and its voucher references) from an old ID to a new one.
+// Idempotent: does nothing if the old ID isn't present.
+async function migrateContactId(tenantId: string, oldId: string, newId: string) {
+  if (oldId === newId) return;
+  const oldContact = await prisma.contact.findUnique({ where: { id: oldId } });
+  if (!oldContact) return;
+
+  const newExists = await prisma.contact.findUnique({ where: { id: newId } });
+  if (!newExists) {
+    const { id: _drop, ...fields } = oldContact as any;
+    await prisma.contact.create({ data: { ...fields, id: newId } });
+  }
+  await prisma.voucher.updateMany({
+    where: { tenantId, contactId: oldId },
+    data: { contactId: newId },
+  });
+  await prisma.contact.delete({ where: { id: oldId } });
+  console.log(`  ✓ Migrated contact ID ${oldId} → ${newId}`);
+}
 
 // month is 1-indexed for readability. Build UTC dates so the calendar day is
 // preserved regardless of server timezone (avoids off-by-one in the SOA).
@@ -42,6 +66,9 @@ async function main() {
   if (!revenueAccount || !cogsAccount || !arAccount || !apAccount) {
     throw new Error('Required accounts not found — run main seeder first');
   }
+
+  // Migrate any prior invalid-UUID contact ID to the valid one (one-time).
+  await migrateContactId(tenant.id, HOTNET_OLD_CONTACT_ID, HOTNET_CONTACT_ID);
 
   // 4. Create dedicated trade account for HOT NET
   let tradeAccount = await prisma.account.findUnique({ where: { id: HOTNET_ACCOUNT_ID } });

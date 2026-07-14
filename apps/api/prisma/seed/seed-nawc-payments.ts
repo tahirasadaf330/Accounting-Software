@@ -2,7 +2,7 @@ import { PrismaClient, VoucherType, VoucherStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const NAWC_CONTACT_ID = 'a1a2a3a4-b1b2-c1c2-d1d2-e1e2e3e4e501';
+const NAWC_CONTACT_ID = 'a1a2a3a4-b1b2-4c1c-8d1d-e1e2e3e4e501';
 const NAWC_ACCOUNT_ID = 'a1a2a3a4-b1b2-c1c2-d1d2-e1e2e3e4e502';
 
 // 11 receipt vouchers — NAWC paid HAYO (customer payments)

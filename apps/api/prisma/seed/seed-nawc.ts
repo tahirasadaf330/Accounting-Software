@@ -2,13 +2,37 @@ import { PrismaClient, VoucherType, VoucherStatus, ContactType } from '@prisma/c
 
 const prisma = new PrismaClient();
 
-// Fixed UUID-format IDs — safe to use with ParseUUIDPipe
-const NAWC_CONTACT_ID = 'a1a2a3a4-b1b2-c1c2-d1d2-e1e2e3e4e501';
+// Fixed IDs. The contact ID must be a *valid* UUID (correct version/variant
+// nibbles) because the create-voucher DTO validates contactId with @IsUUID().
+const NAWC_CONTACT_ID = 'a1a2a3a4-b1b2-4c1c-8d1d-e1e2e3e4e501';
 const NAWC_ACCOUNT_ID = 'a1a2a3a4-b1b2-c1c2-d1d2-e1e2e3e4e502';
 
 // Old non-UUID IDs from earlier seeder run (kept for migration)
 const OLD_CONTACT_ID = 'nawc-sa-contact-seed-id-000001';
 const OLD_ACCOUNT_ID = 'nawc-sa-account-seed-id-000001';
+
+// An intermediate seeder used an invalid-UUID contact ID; migrate it too.
+const OLD_INVALID_CONTACT_ID = 'a1a2a3a4-b1b2-c1c2-d1d2-e1e2e3e4e501';
+
+// Move a contact (and its voucher references) from an old ID to a new one.
+// Idempotent: does nothing if the old ID isn't present.
+async function migrateContactId(tenantId: string, oldId: string, newId: string) {
+  if (oldId === newId) return;
+  const oldContact = await prisma.contact.findUnique({ where: { id: oldId } });
+  if (!oldContact) return;
+
+  const newExists = await prisma.contact.findUnique({ where: { id: newId } });
+  if (!newExists) {
+    const { id: _drop, ...fields } = oldContact as any;
+    await prisma.contact.create({ data: { ...fields, id: newId } });
+  }
+  await prisma.voucher.updateMany({
+    where: { tenantId, contactId: oldId },
+    data: { contactId: newId },
+  });
+  await prisma.contact.delete({ where: { id: oldId } });
+  console.log(`  ✓ Migrated contact ID ${oldId} → ${newId}`);
+}
 
 function parseDate(str: string): Date {
   const months: Record<string, number> = {
@@ -116,6 +140,9 @@ async function main() {
 
   // 4. Migrate old non-UUID records if they exist (one-time migration)
   await migrateOldIds(tenant.id, arAccount.id, apAccount.id);
+
+  // 4b. Migrate the earlier invalid-UUID contact ID to the valid one.
+  await migrateContactId(tenant.id, OLD_INVALID_CONTACT_ID, NAWC_CONTACT_ID);
 
   // 5. Create dedicated trade account for NAWC S.A.
   let nawcTradeAccount = await prisma.account.findUnique({ where: { id: NAWC_ACCOUNT_ID } });

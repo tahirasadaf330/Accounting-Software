@@ -2,7 +2,7 @@ import { PrismaClient, VoucherType, VoucherStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const HOTNET_CONTACT_ID = 'b1b2b3b4-c1c2-d1d2-e1e2-f1f2f3f4f501';
+const HOTNET_CONTACT_ID = 'b1b2b3b4-c1c2-41d2-81e2-f1f2f3f4f501';
 const HOTNET_ACCOUNT_ID = 'b1b2b3b4-c1c2-d1d2-e1e2-f1f2f3f4f502';
 
 const CONTACT_NAME = 'HOT NET INTERNET SERVICES LTD';
