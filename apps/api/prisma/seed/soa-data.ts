@@ -3,6 +3,7 @@
 
 export interface SoaInvoice { num: string; start: string; end: string; amount: number; }
 export interface SoaPayment { date: string; invoices: string; amount: number; }
+export interface SoaAdjustment { type: 'DEBIT_NOTE' | 'CREDIT_NOTE'; date: string; amount: number; ref: string; }
 export interface SoaContact {
   key: string;
   name: string;
@@ -13,6 +14,7 @@ export interface SoaContact {
   purchases: SoaInvoice[];
   receipts: SoaPayment[];
   payments: SoaPayment[];
+  adjustments: SoaAdjustment[];
 }
 
 export const SOA_CONTACTS: SoaContact[] = [
@@ -242,7 +244,8 @@ export const SOA_CONTACTS: SoaContact[] = [
         "invoices": "307630",
         "amount": 3487.3
       }
-    ]
+    ],
+    "adjustments": []
   },
   {
     "key": "airon-fzc-llc",
@@ -279,7 +282,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "apelby-gmbh",
@@ -304,7 +308,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "bharti-airtel-uk",
@@ -329,7 +334,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "brilliant-telecom",
@@ -558,7 +564,8 @@ export const SOA_CONTACTS: SoaContact[] = [
         "amount": 2474.58
       }
     ],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "c3ntro-telecom-ipbtel",
@@ -583,7 +590,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "dial-telecommunications",
@@ -814,7 +822,8 @@ export const SOA_CONTACTS: SoaContact[] = [
         "invoices": "",
         "amount": 5460.15
       }
-    ]
+    ],
+    "adjustments": []
   },
   {
     "key": "didww",
@@ -942,7 +951,15 @@ export const SOA_CONTACTS: SoaContact[] = [
         "amount": 20661.32
       }
     ],
-    "payments": []
+    "payments": [],
+    "adjustments": [
+      {
+        "type": "CREDIT_NOTE",
+        "date": "2025-12-31",
+        "amount": 25.54,
+        "ref": "140470"
+      }
+    ]
   },
   {
     "key": "direct-telco-llc",
@@ -967,7 +984,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "ecocarrier-inc",
@@ -998,7 +1016,8 @@ export const SOA_CONTACTS: SoaContact[] = [
         "invoices": "143183",
         "amount": 6722.46
       }
-    ]
+    ],
+    "adjustments": []
   },
   {
     "key": "first-sunrise-group",
@@ -1023,7 +1042,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "globe-teleservices",
@@ -1048,7 +1068,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "ipvoip-s-r",
@@ -1073,7 +1094,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "sipstatus-global-ltd",
@@ -1098,7 +1120,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "sync-sound-llc",
@@ -1128,7 +1151,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "t-rk-telekom",
@@ -1153,7 +1177,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "talk-to-me",
@@ -1177,7 +1202,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "telko-ms",
@@ -1202,7 +1228,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "ultranet-telecom-ghana",
@@ -1227,7 +1254,8 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "voicespin-ltd",
@@ -1251,7 +1279,8 @@ export const SOA_CONTACTS: SoaContact[] = [
     ],
     "purchases": [],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   },
   {
     "key": "vox-master-llc",
@@ -1294,7 +1323,8 @@ export const SOA_CONTACTS: SoaContact[] = [
         "invoices": "142941, 143127",
         "amount": 11516.52
       }
-    ]
+    ],
+    "adjustments": []
   },
   {
     "key": "wic-worldcom-international",
@@ -1319,6 +1349,7 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": []
+    "payments": [],
+    "adjustments": []
   }
 ];

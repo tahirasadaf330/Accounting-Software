@@ -1,5 +1,5 @@
 import { PrismaClient, VoucherType, VoucherStatus, ContactType } from '@prisma/client';
-import { SOA_CONTACTS, SoaContact, SoaInvoice, SoaPayment } from './soa-data';
+import { SOA_CONTACTS, SoaContact, SoaInvoice, SoaPayment, SoaAdjustment } from './soa-data';
 
 const prisma = new PrismaClient();
 
@@ -223,6 +223,73 @@ async function createPayment(
   return 'created';
 }
 
+// Adjustment voucher (CREDIT_NOTE reduces the receivable, DEBIT_NOTE increases it).
+async function createAdjustment(
+  ctx: Ctx, c: SoaContact, tradeAccountId: string, a: SoaAdjustment, idx: number,
+) {
+  const kind = a.type === 'CREDIT_NOTE' ? 'cn' : 'dn';
+  const voucherId = `soa-${c.key}-${kind}-${String(idx + 1).padStart(2, '0')}`;
+  if (await prisma.voucher.findUnique({ where: { id: voucherId } })) return 'skip';
+
+  const isCredit = a.type === 'CREDIT_NOTE';
+  const date = d(a.date);
+  const voucherNumber = await uniqueVoucherNumber(ctx.tenantId, voucherId, voucherId.replace(/^soa-/, '').toUpperCase());
+
+  // CREDIT_NOTE: DR revenue, CR trade (receivable down). DEBIT_NOTE: DR trade, CR revenue (receivable up).
+  const lines = isCredit
+    ? [
+        { accountId: ctx.revenueAccountId, debit: a.amount, credit: 0, narration: 'Sales adjustment (credit note)', lineOrder: 0 },
+        { accountId: tradeAccountId, debit: 0, credit: a.amount, narration: `Credit Note — ${c.name}`, lineOrder: 1 },
+      ]
+    : [
+        { accountId: tradeAccountId, debit: a.amount, credit: 0, narration: `Debit Note — ${c.name}`, lineOrder: 0 },
+        { accountId: ctx.revenueAccountId, debit: 0, credit: a.amount, narration: 'Sales adjustment (debit note)', lineOrder: 1 },
+      ];
+  const narration = `${isCredit ? 'Credit' : 'Debit'} Note — ${c.name}${a.ref ? ` (ref ${a.ref})` : ''}`;
+
+  await prisma.voucher.create({
+    data: {
+      id: voucherId,
+      tenantId: ctx.tenantId,
+      voucherNumber,
+      voucherType: isCredit ? VoucherType.CREDIT_NOTE : VoucherType.DEBIT_NOTE,
+      status: VoucherStatus.POSTED,
+      date,
+      narration,
+      totalAmount: a.amount,
+      currencyCode: 'USD',
+      exchangeRate: 1,
+      createdById: ctx.ceoUserId,
+      approvedById: ctx.ceoUserId,
+      postedAt: date,
+      contactId: c.contactId,
+      lineItems: {
+        create: lines.map((l) => ({
+          tenantId: ctx.tenantId, accountId: l.accountId,
+          debit: l.debit, credit: l.credit, baseDebit: l.debit, baseCredit: l.credit,
+          currencyCode: 'USD', exchangeRate: 1, narration: l.narration, lineOrder: l.lineOrder,
+        })),
+      },
+      journalEntry: {
+        create: {
+          tenantId: ctx.tenantId,
+          entryNumber: `JE-SOA-${c.key}-${kind.toUpperCase()}-${String(idx + 1).padStart(2, '0')}`.slice(0, 50),
+          entryDate: date,
+          narration,
+          lines: {
+            create: lines.map((l) => ({
+              tenantId: ctx.tenantId, accountId: l.accountId,
+              debit: l.debit, credit: l.credit, baseCurrencyDebit: l.debit, baseCurrencyCredit: l.credit,
+              currencyCode: 'USD', exchangeRate: 1, narration: l.narration, lineOrder: l.lineOrder,
+            })),
+          },
+        },
+      },
+    },
+  });
+  return 'created';
+}
+
 async function seedContact(ctx: Ctx, c: SoaContact) {
   console.log(`\n── ${c.name} (${c.key}) | term ${c.term} ──`);
   const trade = await ensureTradeAccount(ctx, c);
@@ -243,9 +310,10 @@ async function seedContact(ctx: Ctx, c: SoaContact) {
   for (const inv of c.purchases) tally(await createInvoice(ctx, c, trade.id, inv, 'PURCHASE'));
   for (let i = 0; i < c.receipts.length; i++) tally(await createPayment(ctx, c, trade.id, c.receipts[i], i, 'RECEIPT'));
   for (let i = 0; i < c.payments.length; i++) tally(await createPayment(ctx, c, trade.id, c.payments[i], i, 'PAYMENT'));
+  for (let i = 0; i < c.adjustments.length; i++) tally(await createAdjustment(ctx, c, trade.id, c.adjustments[i], i));
 
   console.log(`  ✓ ${c.name}: created ${created}, skipped ${skipped} ` +
-    `(S:${c.sales.length} P:${c.purchases.length} R:${c.receipts.length} Pay:${c.payments.length})`);
+    `(S:${c.sales.length} P:${c.purchases.length} R:${c.receipts.length} Pay:${c.payments.length} Adj:${c.adjustments.length})`);
 }
 
 async function main() {
