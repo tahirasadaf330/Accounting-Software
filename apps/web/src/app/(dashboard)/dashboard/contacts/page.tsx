@@ -147,6 +147,8 @@ export default function ContactsPage() {
 
   const user = useAuthStore((s) => s.user);
   const canManage = ['OWNER', 'ASSISTANT_MANAGER_BILLING'].includes(user?.role ?? '');
+  // Payment Officers can edit existing contacts, but not add or delete.
+  const canEdit = canManage || user?.role === 'PAYMENT_OFFICER';
 
   // Reset to page 1 whenever filters/search/page size change.
   useEffect(() => {
@@ -343,23 +345,23 @@ export default function ContactsPage() {
                       >
                         <FileText className="h-4 w-4" />
                       </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => handleEdit(contact)}
+                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                          title="Edit contact"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
                       {canManage && (
-                        <>
-                          <button
-                            onClick={() => handleEdit(contact)}
-                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                            title="Edit contact"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteClick(contact)}
-                            className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                            title="Delete contact"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </>
+                        <button
+                          onClick={() => handleDeleteClick(contact)}
+                          className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                          title="Delete contact"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
                   </td>

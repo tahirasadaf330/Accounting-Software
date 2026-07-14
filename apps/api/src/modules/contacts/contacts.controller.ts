@@ -87,7 +87,7 @@ export class ContactsController {
   }
 
   @Patch(':id')
-  @Roles(Role.OWNER, Role.ASSISTANT_MANAGER_BILLING)
+  @Roles(Role.OWNER, Role.ASSISTANT_MANAGER_BILLING, Role.PAYMENT_OFFICER)
   @ApiOperation({ summary: 'Update a contact' })
   @ApiParam({ name: 'id', description: 'Contact ID', type: String })
   @ApiResponse({ status: 200, description: 'Contact updated successfully' })
