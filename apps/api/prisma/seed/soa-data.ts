@@ -1351,5 +1351,499 @@ export const SOA_CONTACTS: SoaContact[] = [
     "receipts": [],
     "payments": [],
     "adjustments": []
+  },
+  {
+    "key": "b-i-c",
+    "name": "B.I.C.S",
+    "term": 30,
+    "contactId": "50a0c000-0000-4000-8000-000000000023",
+    "accountId": "50a0a000-0000-4000-8000-000000000023",
+    "sales": [
+      {
+        "num": "U-2-103092",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 22.21
+      },
+      {
+        "num": "143269",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 136056.99
+      }
+    ],
+    "purchases": [
+      {
+        "num": "871388",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 1525.17
+      },
+      {
+        "num": "871206",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 57815.29
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "bird",
+    "name": "BIRD",
+    "term": 30,
+    "contactId": "50a0c000-0000-4000-8000-000000000024",
+    "accountId": "50a0a000-0000-4000-8000-000000000024",
+    "sales": [
+      {
+        "num": "143260",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 2315.93
+      }
+    ],
+    "purchases": [],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "business-telecommunications-services",
+    "name": "BUSINESS TELECOMMUNICATIONS SERVICES (BTS)",
+    "term": 30,
+    "contactId": "50a0c000-0000-4000-8000-000000000025",
+    "accountId": "50a0a000-0000-4000-8000-000000000025",
+    "sales": [
+      {
+        "num": "143261",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 27721.84
+      }
+    ],
+    "purchases": [
+      {
+        "num": "129190",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 12806.72
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "dawn-global-services",
+    "name": "DAWN GLOBAL SERVICES LIMITED",
+    "term": 15,
+    "contactId": "50a0c000-0000-4000-8000-000000000026",
+    "accountId": "50a0a000-0000-4000-8000-000000000026",
+    "sales": [
+      {
+        "num": "143190",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 1237.82
+      }
+    ],
+    "purchases": [
+      {
+        "num": "PRE-INVOICE-23330",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 3007.89
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "galaxy-one-network",
+    "name": "GALAXY ONE NETWORK PTE. LTD. (former Green Packet Global Pte Ltd)",
+    "term": 15,
+    "contactId": "50a0c000-0000-4000-8000-000000000027",
+    "accountId": "50a0a000-0000-4000-8000-000000000027",
+    "sales": [
+      {
+        "num": "143112",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 125.29
+      }
+    ],
+    "purchases": [
+      {
+        "num": " I­042355\r\n",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 279.32
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "global-reach-communications",
+    "name": "GLOBAL REACH COMMUNICATIONS",
+    "term": 30,
+    "contactId": "50a0c000-0000-4000-8000-000000000028",
+    "accountId": "50a0a000-0000-4000-8000-000000000028",
+    "sales": [
+      {
+        "num": "143291",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 407.31
+      }
+    ],
+    "purchases": [],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "idt-voip",
+    "name": "IDT VOIP",
+    "term": 15,
+    "contactId": "50a0c000-0000-4000-8000-000000000029",
+    "accountId": "50a0a000-0000-4000-8000-000000000029",
+    "sales": [
+      {
+        "num": "143220",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 39488.7
+      }
+    ],
+    "purchases": [
+      {
+        "num": "723440",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 2652.61
+      },
+      {
+        "num": "723437",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 2810.05
+      }
+    ],
+    "receipts": [
+      {
+        "date": "2026-07-07",
+        "invoices": "143220",
+        "amount": 34026.04
+      }
+    ],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "primetel-plc",
+    "name": "PRIMETEL PLC",
+    "term": 15,
+    "contactId": "50a0c000-0000-4000-8000-000000000030",
+    "accountId": "50a0a000-0000-4000-8000-000000000030",
+    "sales": [
+      {
+        "num": "142942",
+        "start": "2026-06-01",
+        "end": "2026-06-15",
+        "amount": 1761.63
+      },
+      {
+        "num": "143169",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 1306.43
+      }
+    ],
+    "purchases": [
+      {
+        "num": "32269",
+        "start": "2026-06-01",
+        "end": "2026-06-15",
+        "amount": 2080.92
+      },
+      {
+        "num": "32410",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 275.71
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "raza-global-inc",
+    "name": "RAZA GLOBAL INC.",
+    "term": 30,
+    "contactId": "50a0c000-0000-4000-8000-000000000031",
+    "accountId": "50a0a000-0000-4000-8000-000000000031",
+    "sales": [
+      {
+        "num": "143293",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 13445.96
+      }
+    ],
+    "purchases": [
+      {
+        "num": "Hayo173INV",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 81095.05
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "reshetcall-ltd",
+    "name": "RESHETCALL LTD.",
+    "term": 15,
+    "contactId": "50a0c000-0000-4000-8000-000000000032",
+    "accountId": "50a0a000-0000-4000-8000-000000000032",
+    "sales": [
+      {
+        "num": "143175",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 3530.03
+      }
+    ],
+    "purchases": [],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "telecom-italia-sparkle",
+    "name": "TELECOM ITALIA SPARKLE S.p.A.",
+    "term": 30,
+    "contactId": "50a0c000-0000-4000-8000-000000000033",
+    "accountId": "50a0a000-0000-4000-8000-000000000033",
+    "sales": [
+      {
+        "num": "143114",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 5378.59
+      }
+    ],
+    "purchases": [
+      {
+        "num": "TISCCI2026002660",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 31332.42
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "telegeeks-telecom-dis",
+    "name": "TELEGEEKS TELECOM DiS TICARET LIMITED SiRKETI",
+    "term": 15,
+    "contactId": "50a0c000-0000-4000-8000-000000000034",
+    "accountId": "50a0a000-0000-4000-8000-000000000034",
+    "sales": [
+      {
+        "num": "143236",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 656.75
+      }
+    ],
+    "purchases": [
+      {
+        "num": "01303520260630o",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 11224.63
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "telekom-deutschland-gmbh",
+    "name": "TELEKOM DEUTSCHLAND GMBH",
+    "term": 30,
+    "contactId": "50a0c000-0000-4000-8000-000000000035",
+    "accountId": "50a0a000-0000-4000-8000-000000000035",
+    "sales": [
+      {
+        "num": "143113",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 34838.03
+      }
+    ],
+    "purchases": [
+      {
+        "num": "9000560142",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 18199.02
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "teltac-worldwide-inc",
+    "name": "TELTAC WORLDWIDE INC",
+    "term": 15,
+    "contactId": "50a0c000-0000-4000-8000-000000000036",
+    "accountId": "50a0a000-0000-4000-8000-000000000036",
+    "sales": [
+      {
+        "num": "143223",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 25.7
+      }
+    ],
+    "purchases": [
+      {
+        "num": "TO2026-221",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 275.37
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "vinculum-communication",
+    "name": "VINCULUM COMMUNICATION",
+    "term": 15,
+    "contactId": "50a0c000-0000-4000-8000-000000000037",
+    "accountId": "50a0a000-0000-4000-8000-000000000037",
+    "sales": [
+      {
+        "num": "143234",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 3280.31
+      }
+    ],
+    "purchases": [
+      {
+        "num": "272069",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 86.93
+      },
+      {
+        "num": "272070",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 456.74
+      },
+      {
+        "num": "300250",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 2738.18
+      },
+      {
+        "num": "300218",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 856.72
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "vonage-america",
+    "name": "VONAGE AMERICA",
+    "term": 30,
+    "contactId": "50a0c000-0000-4000-8000-000000000038",
+    "accountId": "50a0a000-0000-4000-8000-000000000038",
+    "sales": [
+      {
+        "num": "143204",
+        "start": "2026-06-01",
+        "end": "2026-06-30",
+        "amount": 260.9
+      }
+    ],
+    "purchases": [],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "wavecrest-networks-ltd",
+    "name": "WAVECREST NETWORKS LTD",
+    "term": 15,
+    "contactId": "50a0c000-0000-4000-8000-000000000039",
+    "accountId": "50a0a000-0000-4000-8000-000000000039",
+    "sales": [
+      {
+        "num": "143214",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 1175.61
+      }
+    ],
+    "purchases": [
+      {
+        "num": "250-INVOICE-8196",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 0.04
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
+  },
+  {
+    "key": "we2stars-company-limited",
+    "name": "WE2STARS COMPANY LIMITED",
+    "term": 15,
+    "contactId": "50a0c000-0000-4000-8000-000000000040",
+    "accountId": "50a0a000-0000-4000-8000-000000000040",
+    "sales": [
+      {
+        "num": "143193",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 2029.16
+      }
+    ],
+    "purchases": [
+      {
+        "num": "DGW2S/HAY00026",
+        "start": "2026-06-16",
+        "end": "2026-06-30",
+        "amount": 11604.63
+      }
+    ],
+    "receipts": [],
+    "payments": [],
+    "adjustments": []
   }
 ];
