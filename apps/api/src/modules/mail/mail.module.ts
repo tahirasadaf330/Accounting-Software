@@ -14,10 +14,10 @@ import { MailService } from './mail.service';
           host: config.get<string>('SMTP_HOST', 'smtp.example.com'),
           port: parseInt(config.get<string>('SMTP_PORT', '587'), 10),
           secure: false,
-          auth: {
-            user: config.get<string>('SMTP_USER', ''),
-            pass: config.get<string>('SMTP_PASS', ''),
-          },
+          ...(config.get<string>('SMTP_USER')
+            ? { auth: { user: config.get<string>('SMTP_USER'), pass: config.get<string>('SMTP_PASS', '') } }
+            : {}),
+          tls: { rejectUnauthorized: false },
         },
         defaults: {
           from: config.get<string>(
