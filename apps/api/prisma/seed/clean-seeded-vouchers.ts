@@ -21,24 +21,23 @@ async function main() {
   });
   console.log(`  ✓ Deleted ${v.count} vouchers (readable IDs)`);
 
-  // Remove the Cloudonix Inc contact + its trade account (dropped from seeder).
-  const cloud = await prisma.contact.findFirst({ where: { name: { equals: 'Cloudonix Inc', mode: 'insensitive' } } });
+  // Remove ONLY the seeded Cloudonix Inc (dropped from seeder). Target by its
+  // exact seeded IDs — never by name — so a real/manual Cloudonix contact is
+  // never affected.
+  const CLOUDONIX_CONTACT_ID = '50a0c000-0000-4000-8000-000000000045';
+  const CLOUDONIX_ACCOUNT_ID = '50a0a000-0000-4000-8000-000000000045';
+  const cloud = await prisma.contact.findUnique({ where: { id: CLOUDONIX_CONTACT_ID } });
   if (cloud) {
-    const accId = cloud.accountId;
-    await prisma.contact.delete({ where: { id: cloud.id } });
-    console.log(`  ✓ Deleted contact: Cloudonix Inc`);
-    if (accId) {
-      const stillUsed = await prisma.contact.count({ where: { accountId: accId } });
-      const hasLines = await prisma.journalEntryLine.count({ where: { accountId: accId } });
-      if (stillUsed === 0 && hasLines === 0) {
-        await prisma.account.delete({ where: { id: accId } }).catch(() => null);
-        console.log(`  ✓ Deleted Cloudonix trade account`);
-      } else {
-        console.log(`  ~ Kept Cloudonix account (still referenced: contacts=${stillUsed}, lines=${hasLines})`);
-      }
+    await prisma.contact.delete({ where: { id: CLOUDONIX_CONTACT_ID } });
+    console.log('  ✓ Deleted seeded contact: Cloudonix Inc');
+    const hasLines = await prisma.journalEntryLine.count({ where: { accountId: CLOUDONIX_ACCOUNT_ID } });
+    const stillUsed = await prisma.contact.count({ where: { accountId: CLOUDONIX_ACCOUNT_ID } });
+    if (hasLines === 0 && stillUsed === 0) {
+      await prisma.account.delete({ where: { id: CLOUDONIX_ACCOUNT_ID } }).catch(() => null);
+      console.log('  ✓ Deleted seeded Cloudonix trade account');
     }
   } else {
-    console.log('  ~ Cloudonix Inc contact not found (already removed)');
+    console.log('  ~ Seeded Cloudonix contact not found (already removed)');
   }
 }
 
