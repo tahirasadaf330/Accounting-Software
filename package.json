@@ -16,6 +16,7 @@
     "prisma:seed:hotnet": "pnpm --filter api prisma:seed:hotnet",
     "prisma:seed:hotnet:payments": "pnpm --filter api prisma:seed:hotnet:payments",
     "prisma:seed:soa": "pnpm --filter api prisma:seed:soa --",
+    "prisma:clean:seeded": "pnpm --filter api prisma:clean:seeded",
     "prisma:studio": "pnpm --filter api prisma:studio",
     "prisma:generate": "pnpm --filter api prisma:generate"
   },

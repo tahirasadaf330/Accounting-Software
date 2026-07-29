@@ -1,5 +1,6 @@
 import { PrismaClient, VoucherType, VoucherStatus, ContactType } from '@prisma/client';
 import { SOA_CONTACTS, SoaContact, SoaInvoice, SoaPayment, SoaAdjustment } from './soa-data';
+import { deterministicUuid } from './seed-utils';
 
 const prisma = new PrismaClient();
 
@@ -94,7 +95,7 @@ async function ensureTradeAccount(ctx: Ctx, c: SoaContact) {
 async function createInvoice(
   ctx: Ctx, c: SoaContact, tradeAccountId: string, inv: SoaInvoice, type: 'SALES' | 'PURCHASE',
 ) {
-  const voucherId = `soa-${c.key}-${type.toLowerCase()}-${inv.num}`;
+  const voucherId = deterministicUuid(`soa-${c.key}-${type.toLowerCase()}-${inv.num}`);
   if (await prisma.voucher.findUnique({ where: { id: voucherId } })) return 'skip';
 
   const voucherDate = d(inv.end);
@@ -161,11 +162,12 @@ async function createInvoice(
 async function createPayment(
   ctx: Ctx, c: SoaContact, tradeAccountId: string, p: SoaPayment, idx: number, type: 'RECEIPT' | 'PAYMENT',
 ) {
-  const voucherId = `soa-${c.key}-${type.toLowerCase()}-${String(idx + 1).padStart(2, '0')}`;
+  const voucherKey = `soa-${c.key}-${type.toLowerCase()}-${String(idx + 1).padStart(2, '0')}`;
+  const voucherId = deterministicUuid(voucherKey);
   if (await prisma.voucher.findUnique({ where: { id: voucherId } })) return 'skip';
 
   const isReceipt = type === 'RECEIPT';
-  const voucherNumber = await uniqueVoucherNumber(ctx.tenantId, voucherId, voucherId.replace(/^soa-/, '').toUpperCase());
+  const voucherNumber = await uniqueVoucherNumber(ctx.tenantId, voucherId, voucherKey.replace(/^soa-/, '').toUpperCase());
   const date = d(p.date);
 
   // RECEIPT (customer paid HAYO): DR bank, CR trade. PAYMENT (HAYO paid): DR trade, CR bank.
@@ -228,12 +230,13 @@ async function createAdjustment(
   ctx: Ctx, c: SoaContact, tradeAccountId: string, a: SoaAdjustment, idx: number,
 ) {
   const kind = a.type === 'CREDIT_NOTE' ? 'cn' : 'dn';
-  const voucherId = `soa-${c.key}-${kind}-${String(idx + 1).padStart(2, '0')}`;
+  const voucherKey = `soa-${c.key}-${kind}-${String(idx + 1).padStart(2, '0')}`;
+  const voucherId = deterministicUuid(voucherKey);
   if (await prisma.voucher.findUnique({ where: { id: voucherId } })) return 'skip';
 
   const isCredit = a.type === 'CREDIT_NOTE';
   const date = d(a.date);
-  const voucherNumber = await uniqueVoucherNumber(ctx.tenantId, voucherId, voucherId.replace(/^soa-/, '').toUpperCase());
+  const voucherNumber = await uniqueVoucherNumber(ctx.tenantId, voucherId, voucherKey.replace(/^soa-/, '').toUpperCase());
 
   // CREDIT_NOTE: DR revenue, CR trade (receivable down). DEBIT_NOTE: DR trade, CR revenue (receivable up).
   const lines = isCredit
