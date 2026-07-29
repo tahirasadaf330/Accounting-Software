@@ -1,4 +1,5 @@
 import { PrismaClient, VoucherType, VoucherStatus, ContactType } from '@prisma/client';
+import { deterministicUuid } from './seed-utils';
 
 const prisma = new PrismaClient();
 
@@ -289,7 +290,7 @@ async function main() {
 
   for (const inv of salesInvoices) {
     const voucherDate = parseDate(inv.end);
-    const voucherId = `nawc-sales-${inv.num}`;
+    const voucherId = deterministicUuid(`nawc-sales-${inv.num}`);
 
     const existing = await prisma.voucher.findUnique({ where: { id: voucherId } });
     if (existing) {
@@ -421,7 +422,7 @@ async function main() {
 
   for (const inv of purchaseInvoices) {
     const voucherDate = parseDate(inv.end);
-    const voucherId = `nawc-purchase-${inv.num}`;
+    const voucherId = deterministicUuid(`nawc-purchase-${inv.num}`);
 
     const existing = await prisma.voucher.findUnique({ where: { id: voucherId } });
     if (existing) {

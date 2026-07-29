@@ -1,4 +1,5 @@
 import { PrismaClient, VoucherType, VoucherStatus, ContactType } from '@prisma/client';
+import { deterministicUuid } from './seed-utils';
 
 const prisma = new PrismaClient();
 
@@ -134,7 +135,7 @@ async function main() {
   ];
 
   for (const inv of salesInvoices) {
-    const voucherId = `hotnet-sales-${inv.num}`;
+    const voucherId = deterministicUuid(`hotnet-sales-${inv.num}`);
     const voucherDate = inv.end;
 
     const existing = await prisma.voucher.findUnique({ where: { id: voucherId } });
@@ -242,7 +243,7 @@ async function main() {
   ];
 
   for (const inv of purchaseInvoices) {
-    const voucherId = `hotnet-purchase-${inv.num}`;
+    const voucherId = deterministicUuid(`hotnet-purchase-${inv.num}`);
     const voucherDate = inv.end;
 
     const existing = await prisma.voucher.findUnique({ where: { id: voucherId } });

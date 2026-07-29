@@ -19,6 +19,7 @@
     "prisma:seed:hotnet": "tsx prisma/seed/seed-hotnet.ts",
     "prisma:seed:hotnet:payments": "tsx prisma/seed/seed-hotnet-payments.ts",
     "prisma:seed:soa": "tsx prisma/seed/seed-soa.ts",
+    "prisma:clean:seeded": "tsx prisma/seed/clean-seeded-vouchers.ts",
     "prisma:studio": "prisma studio",
     "prisma:generate": "prisma generate"
   },

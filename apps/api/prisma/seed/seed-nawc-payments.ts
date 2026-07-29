@@ -1,4 +1,5 @@
 import { PrismaClient, VoucherType, VoucherStatus } from '@prisma/client';
+import { deterministicUuid } from './seed-utils';
 
 const prisma = new PrismaClient();
 
@@ -120,7 +121,8 @@ async function main() {
   let skipped = 0;
 
   for (const rec of receipts) {
-    const existing = await prisma.voucher.findUnique({ where: { id: rec.id } });
+    const voucherId = deterministicUuid(rec.id);
+    const existing = await prisma.voucher.findUnique({ where: { id: voucherId } });
     if (existing) {
       console.log(`  ~ Skipped (exists): Receipt ${rec.id}`);
       skipped++;
@@ -129,7 +131,7 @@ async function main() {
 
     await prisma.voucher.create({
       data: {
-        id: rec.id,
+        id: voucherId,
         tenantId: tenant.id,
         voucherNumber: rec.id.replace('nawc-', 'NAWC-').toUpperCase(),
         voucherType: VoucherType.RECEIPT,

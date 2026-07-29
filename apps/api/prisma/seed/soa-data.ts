@@ -1968,25 +1968,6 @@ export const SOA_CONTACTS: SoaContact[] = [
     "adjustments": []
   },
   {
-    "key": "cloudonix-inc",
-    "name": "Cloudonix Inc",
-    "term": 3,
-    "contactId": "50a0c000-0000-4000-8000-000000000045",
-    "accountId": "50a0a000-0000-4000-8000-000000000045",
-    "sales": [],
-    "purchases": [
-      {
-        "num": "2024-02-231",
-        "start": "2026-07-06",
-        "end": "2026-07-12",
-        "amount": 3636.72
-      }
-    ],
-    "receipts": [],
-    "payments": [],
-    "adjustments": []
-  },
-  {
     "key": "evox-trading",
     "name": "EVOX TRADING",
     "term": 15,
