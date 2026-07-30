@@ -50,7 +50,8 @@ export class UsersService {
       throw new ConflictException('A user with this email already exists');
     }
 
-    const passwordHash = await argon2.hash(dto.password);
+    // SSO users have no local password; only hash one if an admin explicitly set it.
+    const passwordHash = dto.password ? await argon2.hash(dto.password) : null;
 
     return this.prisma.user.create({
       data: {

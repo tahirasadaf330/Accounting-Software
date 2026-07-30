@@ -39,7 +39,7 @@ const STEP_LABELS = ['Company Profile', 'Currency & Fiscal', 'Business Type'];
 
 export default function SetupPage() {
   const router = useRouter();
-  const { tenant, isAuthenticated, _hasHydrated, setupTenant } = useAuthStore();
+  const { tenant, isAuthenticated, _hasHydrated, setupTenant, bootstrap } = useAuthStore();
 
   const [step, setStep] = useState(0);
   const [error, setError] = useState('');
@@ -82,11 +82,16 @@ export default function SetupPage() {
     }
   }, [tenant]);
 
+  // Resolve the session for direct loads of /setup (httpOnly cookie).
+  useEffect(() => {
+    bootstrap();
+  }, [bootstrap]);
+
   // Redirect guard
   useEffect(() => {
     if (!_hasHydrated) return;
     if (!isAuthenticated) {
-      router.replace('/login');
+      window.location.href = '/login';
     } else if (tenant?.status !== 'PENDING_SETUP') {
       router.replace('/dashboard');
     }

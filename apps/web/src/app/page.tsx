@@ -2,26 +2,14 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/stores/auth.store';
 
 export default function Home() {
   const router = useRouter();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const tenant = useAuthStore((s) => s.tenant);
-  const hasHydrated = useAuthStore((s) => s._hasHydrated);
 
+  // Enter the app; the dashboard guard resolves the session and (if needed) redirects to Microsoft.
   useEffect(() => {
-    if (!hasHydrated) return;
-    if (isAuthenticated) {
-      if (tenant?.status === 'PENDING_SETUP') {
-        router.replace('/setup');
-      } else {
-        router.replace('/dashboard');
-      }
-    } else {
-      router.replace('/login');
-    }
-  }, [hasHydrated, isAuthenticated, tenant, router]);
+    router.replace('/dashboard');
+  }, [router]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">

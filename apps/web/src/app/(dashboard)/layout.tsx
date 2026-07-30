@@ -125,7 +125,7 @@ const navigation: NavItem[] = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, user, tenant, logout, _hasHydrated } = useAuthStore();
+  const { isAuthenticated, user, tenant, logout, _hasHydrated, bootstrap } = useAuthStore();
   const resetNotifications = useNotificationStore((s) => s.reset);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<string[]>(['Vouchers', 'Reports']);
@@ -137,10 +137,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   };
 
+  // Resolve the session against the API (httpOnly cookie). On a 401, lib/api.ts redirects to Microsoft.
+  useEffect(() => {
+    bootstrap();
+  }, [bootstrap]);
+
   useEffect(() => {
     if (!_hasHydrated) return;
     if (!isAuthenticated) {
-      router.replace('/login');
+      // Fallback if bootstrap resolved without a session (e.g. a non-401 failure).
+      window.location.href = '/login';
     } else if (tenant?.status === 'PENDING_SETUP') {
       router.replace('/setup');
     }
@@ -162,7 +168,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const handleLogout = async () => {
     await logout();
     resetNotifications();
-    router.push('/login');
+    router.push('/login?signedOut=1');
   };
 
   return (

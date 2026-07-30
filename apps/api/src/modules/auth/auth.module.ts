@@ -5,29 +5,30 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { SsoController } from './sso.controller';
+import { SsoService } from './sso.service';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { MailModule } from '../mail/mail.module';
 import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 
 @Module({
   imports: [
-    MailModule,
     ActivityLogsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: config.get<string>('JWT_EXPIRATION', '15m') },
+        signOptions: { expiresIn: config.get<string>('JWT_EXPIRATION', '8h') },
       }),
       inject: [ConfigService],
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, SsoController],
   providers: [
     AuthService,
+    SsoService,
     JwtStrategy,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

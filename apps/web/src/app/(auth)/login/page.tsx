@@ -1,14 +1,97 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 
-export default function LoginPage() {
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+const SSO_URL = `${API_BASE}/auth/microsoft`;
+// 'password' → form only · 'both' → form + Microsoft button · 'sso' → Microsoft only
+const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'password';
+
+type Banner = 'none' | 'signedOut' | 'ssoError';
+
+function useBanner(): Banner {
+  const [banner, setBanner] = useState<Banner>('none');
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('signedOut')) setBanner('signedOut');
+    else if (q.get('error')) setBanner('ssoError');
+  }, []);
+  return banner;
+}
+
+function MicrosoftButton({ primary }: { primary: boolean }) {
+  return (
+    <a
+      href={SSO_URL}
+      className={
+        primary
+          ? 'flex w-full items-center justify-center rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700'
+          : 'flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50'
+      }
+    >
+      Sign in with Microsoft
+    </a>
+  );
+}
+
+/** sso mode: no login form — go straight to Microsoft, except right after sign-out/error. */
+function SsoLogin() {
+  const [mode, setMode] = useState<'redirecting' | 'stay'>('redirecting');
+  const banner = useBanner();
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('signedOut') || q.get('error')) {
+      setMode('stay');
+    } else {
+      window.location.href = SSO_URL;
+    }
+  }, []);
+
+  if (mode === 'redirecting') {
+    return (
+      <div className="flex flex-col items-center gap-4 py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+        <p className="text-sm text-gray-600">Redirecting to Microsoft…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl bg-white p-8 shadow-sm ring-1 ring-gray-200">
+      <div className="mb-6 text-center">
+        <h1 className="text-2xl font-bold text-gray-900">Sign in</h1>
+        <p className="mt-2 text-sm text-gray-600">Use your Microsoft account to access the app</p>
+      </div>
+
+      {banner === 'signedOut' && (
+        <div className="mb-4 rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-600">
+          You have been signed out.
+        </div>
+      )}
+      {banner === 'ssoError' && (
+        <div className="mb-4 rounded-lg bg-red-50 p-3 text-center text-sm text-red-700">
+          Sorry, we couldn&apos;t sign you in. Please try again.
+        </div>
+      )}
+
+      <MicrosoftButton primary />
+    </div>
+  );
+}
+
+/**
+ * password / both modes: the classic email/password (+ MFA) form.
+ * With withMicrosoft (both mode) a "Sign in with Microsoft" button is offered alongside,
+ * so users can fall back to their password while SSO is being rolled out.
+ */
+function PasswordLogin({ withMicrosoft }: { withMicrosoft: boolean }) {
   const router = useRouter();
   const login = useAuthStore((s) => s.login);
+  const banner = useBanner();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mfaCode, setMfaCode] = useState('');
@@ -49,6 +132,16 @@ export default function LoginPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {banner === 'signedOut' && !error && (
+          <div className="rounded-lg bg-gray-50 p-3 text-center text-sm text-gray-600">
+            You have been signed out.
+          </div>
+        )}
+        {banner === 'ssoError' && !error && (
+          <div className="rounded-lg bg-red-50 p-3 text-center text-sm text-red-700">
+            Microsoft sign-in failed — try again or sign in with your password.
+          </div>
+        )}
         {error && (
           <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
@@ -110,12 +203,6 @@ export default function LoginPage() {
           </div>
         )}
 
-        <div className="flex items-center justify-between">
-          <Link href="/forgot-password" className="text-sm font-medium text-primary-600 hover:text-primary-700">
-            Forgot password?
-          </Link>
-        </div>
-
         <button
           type="submit"
           disabled={loading}
@@ -125,35 +212,21 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-gray-600">
-        Don&apos;t have an account?{' '}
-        <Link href="/register" className="font-medium text-primary-600 hover:text-primary-700">
-          Create one
-        </Link>
-      </p>
-
-      {process.env.NODE_ENV === 'development' && (
-        <div className="mt-6 border-t border-gray-200 pt-4">
-          <p className="mb-2 text-center text-xs font-medium text-gray-400">Dev Quick Login</p>
-          <div className="space-y-1.5">
-            {[
-              { role: 'Owner', email: 'owner@demo-company.com', password: 'DemoOwner123!' },
-              { role: 'Chief Accountant', email: 'chief@demo-company.com', password: 'DemoChief123!' },
-              { role: 'Accountant', email: 'accountant@demo-company.com', password: 'DemoAcct123!' },
-            ].map((cred) => (
-              <button
-                key={cred.role}
-                type="button"
-                onClick={() => { setEmail(cred.email); setPassword(cred.password); }}
-                className="w-full rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-left text-xs text-gray-500 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
-              >
-                <span className="font-medium">{cred.role}</span>
-                <span className="ml-2 text-gray-400">{cred.email}</span>
-              </button>
-            ))}
+      {withMicrosoft && (
+        <>
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-gray-200" />
+            <span className="text-xs font-medium uppercase text-gray-400">or</span>
+            <div className="h-px flex-1 bg-gray-200" />
           </div>
-        </div>
+          <MicrosoftButton primary={false} />
+        </>
       )}
     </div>
   );
+}
+
+export default function LoginPage() {
+  if (AUTH_MODE === 'sso') return <SsoLogin />;
+  return <PasswordLogin withMicrosoft={AUTH_MODE === 'both'} />;
 }
