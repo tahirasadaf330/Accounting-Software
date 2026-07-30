@@ -168,7 +168,8 @@ model User {
   id           String     @id @default(uuid())
   tenantId     String?
   email        String     @unique
-  passwordHash String
+  passwordHash String?
+  azureOid     String?    @unique
   firstName    String
   lastName     String
   role         Role

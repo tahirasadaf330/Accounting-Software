@@ -15,16 +15,32 @@ class ApiError extends Error {
   }
 }
 
-function getTokens() {
-  if (typeof window === 'undefined') return null;
-  const stored = localStorage.getItem('auth');
-  if (!stored) return null;
-  try {
-    const parsed = JSON.parse(stored);
-    return parsed.state || null;
-  } catch {
-    return null;
+// 'password' → form only · 'both' → form + Microsoft button · 'sso' → Microsoft only
+const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'password';
+
+/**
+ * The session lives in an httpOnly cookie on the API domain — JS cannot read it, so we simply
+ * send credentials on every request. On a 401 (no session / expired 8h session) we send the
+ * browser to log in again — straight to Microsoft in sso-only mode (silent re-auth if their
+ * Microsoft session is alive), otherwise to the login page so the user picks a method —
+ * unless already on a public page.
+ */
+function redirectToLogin(): boolean {
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname;
+  if (path.startsWith('/login') || path.startsWith('/not-authorized')) return false;
+  if (AUTH_MODE === 'sso') {
+    const returnTo = encodeURIComponent(path + window.location.search);
+    window.location.href = `${API_BASE}/auth/microsoft?returnTo=${returnTo}`;
+  } else {
+    window.location.href = '/login';
   }
+  return true;
+}
+
+/** A promise that never resolves — used to halt callers while the browser navigates away. */
+function pending<T>(): Promise<T> {
+  return new Promise<T>(() => {});
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -42,46 +58,15 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     if (qs) url += `?${qs}`;
   }
 
-  const auth = getTokens();
   const headers: Record<string, string> = {
     ...(rest.body ? { 'Content-Type': 'application/json' } : {}),
     ...(customHeaders as Record<string, string>),
   };
 
-  if (auth?.accessToken) {
-    headers.Authorization = `Bearer ${auth.accessToken}`;
-  }
+  const response = await fetch(url, { ...rest, headers, credentials: 'include' });
 
-  const response = await fetch(url, { ...rest, headers });
-
-  if (response.status === 401 && auth?.refreshToken) {
-    const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: auth.refreshToken }),
-    });
-
-    if (refreshRes.ok) {
-      const tokens = await refreshRes.json();
-      const stored = JSON.parse(localStorage.getItem('auth') || '{}');
-      stored.state = { ...stored.state, ...tokens };
-      localStorage.setItem('auth', JSON.stringify(stored));
-
-      headers.Authorization = `Bearer ${tokens.accessToken}`;
-      const retryResponse = await fetch(url, { ...rest, headers });
-
-      if (!retryResponse.ok) {
-        const error = await retryResponse.json().catch(() => ({ message: 'Request failed' }));
-        throw new ApiError(retryResponse.status, error.message, error.errors);
-      }
-
-      return retryResponse.json();
-    } else {
-      localStorage.removeItem('auth');
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
-    }
+  if (response.status === 401 && redirectToLogin()) {
+    return pending<T>();
   }
 
   if (!response.ok) {
@@ -91,6 +76,21 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
   if (response.status === 204) return {} as T;
   return response.json();
+}
+
+async function requestBlob(endpoint: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE}${endpoint}`, { credentials: 'include' });
+
+  if (response.status === 401 && redirectToLogin()) {
+    return pending<Blob>();
+  }
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Failed to load file' }));
+    throw new ApiError(response.status, error.message, error.errors);
+  }
+
+  return response.blob();
 }
 
 export const api = {
@@ -110,17 +110,15 @@ export const api = {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
 
-    const auth = getTokens();
-    const headers: Record<string, string> = {};
-    if (auth?.accessToken) {
-      headers.Authorization = `Bearer ${auth.accessToken}`;
-    }
-
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
-      headers,
+      credentials: 'include',
       body: formData,
     });
+
+    if (response.status === 401 && redirectToLogin()) {
+      return pending<T>();
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Upload failed' }));
@@ -131,17 +129,15 @@ export const api = {
   },
 
   postFormData: async <T>(endpoint: string, formData: FormData): Promise<T> => {
-    const auth = getTokens();
-    const headers: Record<string, string> = {};
-    if (auth?.accessToken) {
-      headers.Authorization = `Bearer ${auth.accessToken}`;
-    }
-
     const response = await fetch(`${API_BASE}${endpoint}`, {
       method: 'POST',
-      headers,
+      credentials: 'include',
       body: formData,
     });
+
+    if (response.status === 401 && redirectToLogin()) {
+      return pending<T>();
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'Request failed' }));
@@ -153,38 +149,12 @@ export const api = {
   },
 
   getFileUrl: async (endpoint: string): Promise<string> => {
-    const auth = getTokens();
-    const headers: Record<string, string> = {};
-    if (auth?.accessToken) {
-      headers.Authorization = `Bearer ${auth.accessToken}`;
-    }
-
-    const response = await fetch(`${API_BASE}${endpoint}`, { headers });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Failed to load file' }));
-      throw new ApiError(response.status, error.message, error.errors);
-    }
-
-    const blob = await response.blob();
+    const blob = await requestBlob(endpoint);
     return URL.createObjectURL(blob);
   },
 
   downloadFile: async (endpoint: string, filename: string): Promise<void> => {
-    const auth = getTokens();
-    const headers: Record<string, string> = {};
-    if (auth?.accessToken) {
-      headers.Authorization = `Bearer ${auth.accessToken}`;
-    }
-
-    const response = await fetch(`${API_BASE}${endpoint}`, { headers });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Download failed' }));
-      throw new ApiError(response.status, error.message, error.errors);
-    }
-
-    const blob = await response.blob();
+    const blob = await requestBlob(endpoint);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

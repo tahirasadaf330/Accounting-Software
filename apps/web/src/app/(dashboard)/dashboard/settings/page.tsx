@@ -527,9 +527,6 @@ export default function SettingsPage() {
 
   const [profile, setProfile] = useState<TenantProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const [showMfa, setShowMfa] = useState(false);
-  const fetchProfile = useAuthStore((s) => s.fetchProfile);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -892,49 +889,8 @@ export default function SettingsPage() {
         {/* Company Logo */}
         {tenant && <LogoSection isOwner={isOwner} />}
 
-        {/* Security */}
-        <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Security</h2>
-          <div className="mt-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-900">Two-Factor Authentication</p>
-                <p className="text-xs text-gray-500">Add an extra layer of security to your account</p>
-              </div>
-              <button
-                onClick={() => setShowMfa(true)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                {user?.mfaEnabled ? 'Disable' : 'Enable'}
-              </button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-900">Change Password</p>
-                <p className="text-xs text-gray-500">Update your password regularly</p>
-              </div>
-              <button
-                onClick={() => setShowChangePassword(true)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Change
-              </button>
-            </div>
-          </div>
-        </div>
+        {/* Security settings (password / MFA) removed — authentication is handled by Microsoft SSO. */}
       </div>
-
-      {showChangePassword && (
-        <ChangePasswordModal onClose={() => setShowChangePassword(false)} />
-      )}
-
-      {showMfa && (
-        <MfaModal
-          enabled={!!user?.mfaEnabled}
-          onClose={() => setShowMfa(false)}
-          onSuccess={() => fetchProfile()}
-        />
-      )}
     </div>
   );
 }

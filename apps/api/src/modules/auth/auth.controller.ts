@@ -3,76 +3,71 @@ import {
   Post,
   Get,
   Body,
-  Param,
   HttpCode,
   HttpStatus,
   UseGuards,
+  Res,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+import type { FastifyReply } from 'fastify';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { VerifyMfaDto } from './dto/verify-mfa.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
-import { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import {
+  SESSION_COOKIE,
+  sessionCookieOptions,
+  getAuthMode,
+} from './auth.constants';
 
+/**
+ * Session endpoints. The active login method depends on AUTH_MODE:
+ *  - 'password' → email/password form only
+ *  - 'both'     → password login AND Microsoft SSO (migration period)
+ *  - 'sso'      → Microsoft only; POST /auth/login is disabled (403)
+ * Every mode sets the same httpOnly session cookie.
+ */
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
-
-  @Public()
-  @Post('register')
-  @ApiOperation({ summary: 'Register a new user and organization' })
-  async register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
-  }
+  constructor(
+    private readonly authService: AuthService,
+    private readonly config: ConfigService,
+  ) {}
 
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with email and password' })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
-  }
+  @ApiOperation({ summary: 'Login with email and password (disabled in sso-only mode)' })
+  async login(@Body() dto: LoginDto, @Res() reply: FastifyReply) {
+    if (getAuthMode(this.config) === 'sso') {
+      throw new ForbiddenException('Password login is disabled — sign in with Microsoft');
+    }
 
-  @Public()
-  @Post('refresh')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refresh access token' })
-  async refresh(@Body() dto: RefreshTokenDto) {
-    return this.authService.refreshTokens(dto.refreshToken);
+    const result = await this.authService.login(dto);
+
+    if ('mfaRequired' in result) {
+      reply.send(result);
+      return;
+    }
+
+    const { accessToken, ...body } = result;
+    reply.setCookie(SESSION_COOKIE, accessToken, sessionCookieOptions(this.config));
+    reply.send(body);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Logout and invalidate refresh token' })
-  async logout(
-    @CurrentUser('id') userId: string,
-    @Body() dto: RefreshTokenDto,
-  ) {
-    await this.authService.logout(userId, dto.refreshToken);
-    return { message: 'Logged out successfully' };
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('change-password')
-  @HttpCode(HttpStatus.OK)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Change current user password' })
-  async changePassword(
-    @CurrentUser('id') userId: string,
-    @Body() dto: ChangePasswordDto,
-  ) {
-    return this.authService.changePassword(userId, dto);
+  @ApiOperation({ summary: 'Sign out and clear the session cookie' })
+  async logout(@CurrentUser('id') userId: string, @Res() reply: FastifyReply) {
+    await this.authService.logout(userId);
+    reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    reply.send({ message: 'Logged out successfully' });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -81,71 +76,5 @@ export class AuthController {
   @ApiOperation({ summary: 'Get current user profile' })
   async getProfile(@CurrentUser('id') userId: string) {
     return this.authService.getProfile(userId);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('mfa/setup')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Generate MFA secret and QR code' })
-  async setupMfa(@CurrentUser('id') userId: string) {
-    return this.authService.setupMfa(userId);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('mfa/verify')
-  @HttpCode(HttpStatus.OK)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Verify MFA code and enable MFA' })
-  async verifyMfa(
-    @CurrentUser('id') userId: string,
-    @Body() dto: VerifyMfaDto,
-  ) {
-    return this.authService.verifyMfa(userId, dto.code);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('mfa/disable')
-  @HttpCode(HttpStatus.OK)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Disable MFA' })
-  async disableMfa(
-    @CurrentUser('id') userId: string,
-    @Body() dto: VerifyMfaDto,
-  ) {
-    return this.authService.disableMfa(userId, dto.code);
-  }
-
-  @Public()
-  @Post('forgot-password')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Request a password reset email' })
-  async forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(dto);
-  }
-
-  @Public()
-  @Post('reset-password')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reset password using token' })
-  async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
-  }
-
-  @Public()
-  @Get('invitation/:token')
-  @ApiOperation({ summary: 'Get invitation details by token' })
-  async getInvitationDetails(@Param('token') token: string) {
-    return this.authService.getInvitationDetails(token);
-  }
-
-  @Public()
-  @Post('invitation/:token/accept')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Accept invitation and create account' })
-  async acceptInvitation(
-    @Param('token') token: string,
-    @Body() dto: AcceptInvitationDto,
-  ) {
-    return this.authService.acceptInvitation(token, dto);
   }
 }
