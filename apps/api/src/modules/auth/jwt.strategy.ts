@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SESSION_COOKIE } from './auth.constants';
 
 export interface JwtPayload {
   sub: string;
@@ -12,6 +13,10 @@ export interface JwtPayload {
   mfaVerified: boolean;
 }
 
+/** Read the session JWT from the httpOnly cookie set after SSO login. */
+const cookieExtractor = (req: { cookies?: Record<string, string> }): string | null =>
+  req?.cookies?.[SESSION_COOKIE] ?? null;
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
@@ -19,7 +24,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private prisma: PrismaService,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        cookieExtractor as (req: unknown) => string | null,
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ]),
       ignoreExpiration: false,
       secretOrKey: config.get<string>('JWT_SECRET'),
     });
