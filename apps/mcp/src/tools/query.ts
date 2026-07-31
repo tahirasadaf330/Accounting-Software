@@ -9,12 +9,14 @@ import { GuardRejectError } from '../errors.js';
 import { config } from '../config.js';
 import type { ToolContext, WorkResult } from '../runner.js';
 import { guardAndRewrite } from './sqlGuard.js';
+import { getColumnCaseMap } from '../db/columnMap.js';
 
 export async function query(ctx: ToolContext, args: Record<string, unknown>): Promise<WorkResult> {
   const sql = String(args.sql ?? '').trim();
   if (!sql) throw new GuardRejectError('empty query');
 
-  const { sql: finalSql, relations } = guardAndRewrite(sql, ctx.perms, ctx.tenantId, config.rowCap);
+  const caseMap = await getColumnCaseMap();
+  const { sql: finalSql, relations } = guardAndRewrite(sql, ctx.perms, ctx.tenantId, config.rowCap, caseMap);
 
   const res = await ctx.queryArray(finalSql);
   const columns = res.fields.map((f) => f.name);

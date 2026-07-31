@@ -40,7 +40,13 @@ export interface GuardResult {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Node = any;
 
-export function guardAndRewrite(rawSql: string, perms: Permissions, tenantId: string, rowCap: number): GuardResult {
+export function guardAndRewrite(
+  rawSql: string,
+  perms: Permissions,
+  tenantId: string,
+  rowCap: number,
+  caseMap: Map<string, string> = new Map(),
+): GuardResult {
   let statements: Node[];
   try {
     statements = parse(rawSql) as Node[];
@@ -176,6 +182,15 @@ export function guardAndRewrite(rawSql: string, perms: Permissions, tenantId: st
   });
 
   const mapper = astMapper((m) => ({
+    // Restore real camelCase for identifiers the agent wrote unquoted, so
+    // toSql emits them quoted and Postgres finds the column.
+    ref: (r: Node) => {
+      if (r && typeof r.name === 'string' && r.name !== '*') {
+        const real = caseMap.get(r.name.toLowerCase());
+        if (real && real !== r.name) return { ...r, name: real };
+      }
+      return r;
+    },
     selection: (s: Node) => {
       const mapped = m.super().selection(s) as Node;
       if (mapped?.type !== 'select' || !Array.isArray(mapped.from)) return mapped;

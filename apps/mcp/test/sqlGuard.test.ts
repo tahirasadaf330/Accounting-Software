@@ -115,6 +115,23 @@ test('allows: global table (currencies) gets NO tenant predicate', () => {
   assert.doesNotMatch(sql, /"tenantId"/);
 });
 
+test('auto-quotes unquoted camelCase columns via the case map', () => {
+  const caseMap = new Map([
+    ['totalamount', 'totalAmount'],
+    ['vouchertype', 'voucherType'],
+    ['contactid', 'contactId'],
+  ]);
+  const { sql } = guardAndRewrite(
+    "SELECT sum(totalAmount) FROM vouchers WHERE voucherType = 'SALES'",
+    OWNER,
+    TENANT,
+    CAP,
+    caseMap,
+  );
+  assert.match(sql, /"totalAmount"/, `expected quoted totalAmount in: ${sql}`);
+  assert.match(sql, /"voucherType"/, `expected quoted voucherType in: ${sql}`);
+});
+
 test('allows: valid CTE over allow-listed tables', () => {
   const sql = allows('WITH s AS (SELECT "contactId", "totalAmount" FROM vouchers) SELECT * FROM s');
   assert.match(sql, /"tenantId"/); // the inner vouchers select is scoped
