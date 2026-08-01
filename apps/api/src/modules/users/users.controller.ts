@@ -20,7 +20,6 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangeRoleDto } from './dto/change-role.dto';
-import { InviteUserDto } from './dto/invite-user.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TenantId } from '../../common/decorators/tenant-id.decorator';
@@ -34,50 +33,15 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a new user in the current tenant' })
+  @Roles(Role.OWNER)
+  @ApiOperation({
+    summary: 'Add a user to the current tenant (OWNER only) — they sign in via Microsoft SSO',
+  })
   async create(
     @TenantId() tenantId: string,
     @Body() dto: CreateUserDto,
   ) {
     return this.usersService.create(tenantId, dto);
-  }
-
-  @Post('invite')
-  @Roles(Role.OWNER)
-  @ApiOperation({ summary: 'Invite a new user to the tenant via email' })
-  async inviteUser(
-    @TenantId() tenantId: string,
-    @CurrentUser('id') currentUserId: string,
-    @Body() dto: InviteUserDto,
-  ) {
-    return this.usersService.inviteUser(tenantId, currentUserId, dto);
-  }
-
-  @Get('invitations')
-  @ApiOperation({ summary: 'List all invitations for the current tenant' })
-  async getInvitations(@TenantId() tenantId: string) {
-    return this.usersService.getInvitationsByTenant(tenantId);
-  }
-
-  @Post('invitations/:id/resend')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Resend an invitation email' })
-  async resendInvitation(
-    @Param('id', ParseUUIDPipe) id: string,
-    @TenantId() tenantId: string,
-    @CurrentUser('id') currentUserId: string,
-  ) {
-    return this.usersService.resendInvitation(tenantId, id, currentUserId);
-  }
-
-  @Post('invitations/:id/cancel')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cancel a pending invitation' })
-  async cancelInvitation(
-    @Param('id', ParseUUIDPipe) id: string,
-    @TenantId() tenantId: string,
-  ) {
-    return this.usersService.cancelInvitation(tenantId, id);
   }
 
   @Get()

@@ -6,21 +6,15 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { MailService } from '../mail/mail.service';
-import { Role, UserStatus, InvitationStatus } from '@prisma/client';
+import { Role, UserStatus } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { InviteUserDto } from './dto/invite-user.dto';
 import { PAGINATION_DEFAULTS } from '@accounting-saas/shared';
-import { randomBytes } from 'crypto';
 import * as argon2 from 'argon2';
 
 @Injectable()
 export class UsersService {
-  constructor(
-    private prisma: PrismaService,
-    private mailService: MailService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   async create(tenantId: string, dto: CreateUserDto) {
     if (!tenantId) {
@@ -298,166 +292,4 @@ export class UsersService {
     });
   }
 
-  async inviteUser(tenantId: string, invitedById: string, dto: InviteUserDto) {
-    // Only allow non-OWNER roles for invitations
-    if (dto.role === Role.OWNER) {
-      throw new BadRequestException('Cannot invite users with OWNER role');
-    }
-
-    // Check no existing user with this email
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
-    });
-
-    if (existingUser) {
-      throw new ConflictException('A user with this email already exists');
-    }
-
-    // Check no active pending invitation
-    const existingInvitation = await this.prisma.invitation.findFirst({
-      where: {
-        email: dto.email.toLowerCase(),
-        tenantId,
-        status: InvitationStatus.PENDING,
-        expiresAt: { gt: new Date() },
-      },
-    });
-
-    if (existingInvitation) {
-      throw new ConflictException('An active invitation already exists for this email');
-    }
-
-    const inviter = await this.prisma.user.findUnique({
-      where: { id: invitedById },
-    });
-
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-    });
-
-    if (!tenant) {
-      throw new NotFoundException('Tenant not found');
-    }
-
-    const token = randomBytes(32).toString('hex');
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
-
-    const invitation = await this.prisma.invitation.create({
-      data: {
-        tenantId,
-        email: dto.email.toLowerCase(),
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        role: dto.role,
-        invitedById,
-        token,
-        expiresAt,
-      },
-    });
-
-    await this.mailService.sendInvitation({
-      email: dto.email.toLowerCase(),
-      firstName: dto.firstName,
-      lastName: dto.lastName,
-      inviterName: inviter ? `${inviter.firstName} ${inviter.lastName}` : 'A team member',
-      companyName: tenant.name,
-      role: dto.role,
-      token,
-    });
-
-    return invitation;
-  }
-
-  async getInvitationsByTenant(tenantId: string) {
-    return this.prisma.invitation.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        status: true,
-        expiresAt: true,
-        createdAt: true,
-        invitedBy: {
-          select: {
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
-    });
-  }
-
-  async resendInvitation(tenantId: string, invitationId: string, resendById: string) {
-    const invitation = await this.prisma.invitation.findUnique({
-      where: { id: invitationId },
-      include: { tenant: true },
-    });
-
-    if (!invitation) {
-      throw new NotFoundException('Invitation not found');
-    }
-
-    if (invitation.tenantId !== tenantId) {
-      throw new ForbiddenException('You do not have access to this invitation');
-    }
-
-    if (invitation.status !== InvitationStatus.PENDING) {
-      throw new BadRequestException('Only pending invitations can be resent');
-    }
-
-    // Generate a new token and extend expiry
-    const token = randomBytes(32).toString('hex');
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
-
-    const updated = await this.prisma.invitation.update({
-      where: { id: invitationId },
-      data: { token, expiresAt },
-    });
-
-    const resender = await this.prisma.user.findUnique({
-      where: { id: resendById },
-    });
-
-    await this.mailService.sendInvitation({
-      email: invitation.email,
-      firstName: invitation.firstName,
-      lastName: invitation.lastName,
-      inviterName: resender ? `${resender.firstName} ${resender.lastName}` : 'A team member',
-      companyName: invitation.tenant.name,
-      role: invitation.role,
-      token,
-    });
-
-    return updated;
-  }
-
-  async cancelInvitation(tenantId: string, invitationId: string) {
-    const invitation = await this.prisma.invitation.findUnique({
-      where: { id: invitationId },
-    });
-
-    if (!invitation) {
-      throw new NotFoundException('Invitation not found');
-    }
-
-    if (invitation.tenantId !== tenantId) {
-      throw new ForbiddenException('You do not have access to this invitation');
-    }
-
-    if (invitation.status !== InvitationStatus.PENDING) {
-      throw new BadRequestException('Only pending invitations can be cancelled');
-    }
-
-    await this.prisma.invitation.delete({
-      where: { id: invitationId },
-    });
-
-    return { message: 'Invitation cancelled' };
-  }
 }

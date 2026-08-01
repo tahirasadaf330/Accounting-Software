@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Pagination } from '@/components/Pagination';
-import { Users, Plus, X, Mail, RefreshCw, XCircle, Trash2 } from 'lucide-react';
+import { Users, Plus, X, Trash2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/cn';
 
@@ -17,21 +17,6 @@ interface User {
   createdAt: string;
 }
 
-interface Invitation {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: string;
-  status: string;
-  expiresAt: string;
-  createdAt: string;
-  invitedBy: {
-    firstName: string;
-    lastName: string;
-  };
-}
-
 const roleColors: Record<string, string> = {
   OWNER: 'bg-purple-100 text-purple-700',
   FINANCE_MANAGER: 'bg-blue-100 text-blue-700',
@@ -41,13 +26,11 @@ const roleColors: Record<string, string> = {
   PAYMENT_OFFICER: 'bg-yellow-100 text-yellow-700',
 };
 
-const invitationStatusColors: Record<string, string> = {
-  PENDING: 'bg-yellow-100 text-yellow-700',
-  ACCEPTED: 'bg-green-100 text-green-700',
-  EXPIRED: 'bg-gray-100 text-gray-500',
-};
-
-function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+/**
+ * Creates the account directly (no password, no invitation email) — the person then
+ * signs in with their Microsoft account. The email must be their exact Microsoft email.
+ */
+function AddUserModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -61,10 +44,10 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
     setLoading(true);
 
     try {
-      await api.post('/users/invite', { email, firstName, lastName, role });
+      await api.post('/users', { email, firstName, lastName, role });
       onSuccess();
     } catch (err: any) {
-      setError(err.message || 'Failed to send invitation');
+      setError(err.message || 'Failed to add user');
       setLoading(false);
     }
   };
@@ -73,7 +56,7 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Invite team member</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Add team member</h2>
           <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
             <X className="h-5 w-5" />
           </button>
@@ -114,18 +97,22 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
           </div>
 
           <div>
-            <label htmlFor="inviteEmail" className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="addEmail" className="mb-1 block text-sm font-medium text-gray-700">
               Email
             </label>
             <input
-              id="inviteEmail"
+              id="addEmail"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
-              placeholder="user@example.com"
+              placeholder="user@company.com"
             />
+            <p className="mt-1 text-xs text-gray-500">
+              Use the person&apos;s exact Microsoft work email — they&apos;ll sign in with their
+              Microsoft account, no password needed.
+            </p>
           </div>
 
           <div>
@@ -159,7 +146,7 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
               disabled={loading}
               className="flex-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
             >
-              {loading ? 'Sending...' : 'Send invitation'}
+              {loading ? 'Adding...' : 'Add user'}
             </button>
           </div>
         </form>
@@ -171,9 +158,8 @@ function InviteUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [usersTotal, setUsersTotal] = useState(0);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -184,10 +170,6 @@ export default function UsersPage() {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize]);
-
-  useEffect(() => {
-    loadInvitations();
-  }, []);
 
   const loadUsers = async () => {
     try {
@@ -200,18 +182,9 @@ export default function UsersPage() {
     setLoading(false);
   };
 
-  const loadInvitations = async () => {
-    try {
-      const data = await api.get<Invitation[]>('/users/invitations');
-      setInvitations(data || []);
-    } catch (err) {
-      console.error('Failed to load invitations:', err);
-    }
-  };
-
-  const handleInviteSuccess = () => {
-    setShowInviteModal(false);
-    loadInvitations();
+  const handleAddSuccess = () => {
+    setShowAddModal(false);
+    loadUsers();
   };
 
   const handleDeleteUser = async (id: string) => {
@@ -226,24 +199,6 @@ export default function UsersPage() {
     setDeletingId(null);
   };
 
-  const handleResendInvitation = async (id: string) => {
-    try {
-      await api.post(`/users/invitations/${id}/resend`);
-      loadInvitations();
-    } catch (err) {
-      console.error('Failed to resend invitation:', err);
-    }
-  };
-
-  const handleCancelInvitation = async (id: string) => {
-    try {
-      await api.post(`/users/invitations/${id}/cancel`);
-      loadInvitations();
-    } catch (err) {
-      console.error('Failed to cancel invitation:', err);
-    }
-  };
-
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -253,11 +208,11 @@ export default function UsersPage() {
         </div>
         {isOwner && (
           <button
-            onClick={() => setShowInviteModal(true)}
+            onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
           >
             <Plus className="h-4 w-4" />
-            Invite User
+            Add User
           </button>
         )}
       </div>
@@ -333,83 +288,10 @@ export default function UsersPage() {
         )}
       </div>
 
-      {/* Pending Invitations */}
-      {invitations.length > 0 && (
-        <div className="mt-8">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
-            <Mail className="h-5 w-5 text-gray-400" />
-            Invitations
-          </h2>
-          <div className="overflow-x-auto rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Role</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Invited by</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500">Sent</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {invitations.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                      {inv.firstName} {inv.lastName}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{inv.email}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', roleColors[inv.role])}>
-                        {inv.role.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', invitationStatusColors[inv.status])}>
-                        {inv.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {inv.invitedBy.firstName} {inv.invitedBy.lastName}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {new Date(inv.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {inv.status === 'PENDING' && (
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleResendInvitation(inv.id)}
-                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary-600 hover:bg-primary-50"
-                            title="Resend invitation"
-                          >
-                            <RefreshCw className="h-3.5 w-3.5" />
-                            Resend
-                          </button>
-                          <button
-                            onClick={() => handleCancelInvitation(inv.id)}
-                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
-                            title="Cancel invitation"
-                          >
-                            <XCircle className="h-3.5 w-3.5" />
-                            Cancel
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {showInviteModal && (
-        <InviteUserModal
-          onClose={() => setShowInviteModal(false)}
-          onSuccess={handleInviteSuccess}
+      {showAddModal && (
+        <AddUserModal
+          onClose={() => setShowAddModal(false)}
+          onSuccess={handleAddSuccess}
         />
       )}
     </div>
