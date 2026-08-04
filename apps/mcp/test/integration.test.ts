@@ -1,8 +1,9 @@
 /**
- * End-to-end integration (Hayo MCP Integration Spec). Mints Atlas-style RS256
- * tokens and drives the running connector, checking the {result|error, audit}
- * shape and per-role scoping. REQUIRES: `pnpm --filter mcp gen:keys`, db:setup,
- * and the server running. SKIPS if the server or dev keys are absent.
+ * End-to-end integration (Hayo MCP Integration Spec + Atlas answers). Mints
+ * Atlas-style RS256 tokens and drives the running connector, checking the
+ * structuredContent { data, audit } shape (Spec §2.1) and per-role scoping.
+ * REQUIRES: `pnpm --filter mcp gen:keys`, db:setup, and the server running.
+ * SKIPS if the server or dev keys are absent.
  */
 import 'dotenv/config';
 import { test, before } from 'node:test';
@@ -14,7 +15,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 const MCP_URL = process.env.MCP_URL || 'http://127.0.0.1:7801/mcp';
 const HEALTH = MCP_URL.replace(/\/mcp$/, '/health');
-const AUD = process.env.ATLAS_JWT_AUD || 'accounting-mcp-dev';
+const AUD = process.env.MCP_AUD || 'accounting-mcp-local';
+const ISS = process.env.ATLAS_ISS || 'atlas';
 const OWNER = 'tahira.sadaf@kingrevolution.com';
 const PAYMENT_OFFICER = 'imran.abbas@kingrevolution.com';
 const KEYS = 'dev-keys/private.jwk.json';
@@ -51,7 +53,7 @@ async function mint(email: string, opts: TokOpts = {}): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   return new jose.SignJWT({ oid: oidFor(email), email, correlation_id: 'itest-' + randomUUID().slice(0, 8) })
     .setProtectedHeader({ alg: 'RS256', kid: priv.kid })
-    .setIssuer('atlas')
+    .setIssuer(ISS)
     .setAudience(opts.aud ?? AUD)
     .setJti(randomUUID())
     .setIssuedAt(opts.expired ? now - 600 : now)
@@ -61,24 +63,28 @@ async function mint(email: string, opts: TokOpts = {}): Promise<string> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function call(token: string | null, tool: string, args: Record<string, unknown>): Promise<any> {
+async function call(token: string | null, tool: string, args: Record<string, unknown>): Promise<{ data: any; audit: any; text: string }> {
   const headers: Record<string, string> = {};
   if (token) headers.authorization = `Bearer ${token}`;
   const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), { requestInit: { headers } });
   const client = new Client({ name: 'itest', version: '0.0.0' });
   await client.connect(transport);
   try {
-    const res = (await client.callTool({ name: tool, arguments: args })) as { content?: Array<{ text?: string }> };
-    return JSON.parse((res.content ?? []).map((c) => c.text ?? '').join(''));
+    const res = (await client.callTool({ name: tool, arguments: args })) as {
+      content?: Array<{ text?: string }>;
+      structuredContent?: { data: unknown; audit: unknown };
+    };
+    const sc = res.structuredContent ?? { data: undefined, audit: undefined };
+    return { data: sc.data, audit: sc.audit, text: (res.content ?? []).map((c) => c.text ?? '').join(' ') };
   } finally {
     await client.close();
   }
 }
 
-test('describe: OWNER → 6 datasets, audit ok', async (t) => {
+test('describe: OWNER → 6 datasets; audit in structuredContent', async (t) => {
   if (!up) return t.skip('server/keys not available');
   const r = await call(await mint(OWNER), 'accounting_describe', {});
-  assert.equal(r.result.datasets.length, 6);
+  assert.equal(r.data.datasets.length, 6);
   assert.equal(r.audit.outcome, 'ok');
   assert.equal(r.audit.schema_version, 1);
   assert.equal(r.audit.system, 'accounting');
@@ -90,16 +96,17 @@ test('describe: OWNER → 6 datasets, audit ok', async (t) => {
 test('describe: PAYMENT_OFFICER → 3 datasets', async (t) => {
   if (!up) return t.skip();
   const r = await call(await mint(PAYMENT_OFFICER), 'accounting_describe', {});
-  assert.equal(r.result.datasets.length, 3);
+  assert.equal(r.data.datasets.length, 3);
 });
 
-test('no token → error/bad_token, audit present', async (t) => {
+test('no token → denied/bad_token as a NORMAL result (data null, audit present)', async (t) => {
   if (!up) return t.skip();
   const r = await call(null, 'accounting_describe', {});
-  assert.ok(r.error);
+  assert.equal(r.data, null);
   assert.equal(r.audit.outcome, 'denied');
   assert.equal(r.audit.deny_reason, 'bad_token');
   assert.equal(r.audit.subject.oid, null);
+  assert.match(r.text, /Access denied/);
 });
 
 test('expired token → token_expired', async (t) => {
@@ -125,8 +132,8 @@ test('escape hatch: valid SELECT → ok, numbers, audit shows the executed state
   if (!up) return t.skip();
   const r = await call(await mint(OWNER), 'accounting_query', { sql: 'SELECT count(*) AS n FROM vouchers' });
   assert.equal(r.audit.outcome, 'ok');
-  assert.equal(typeof r.result.rows[0][0], 'number');
-  assert.match(r.audit.operation.statement, /tenantId/); // tenant predicate injected
+  assert.equal(typeof r.data.rows[0][0], 'number');
+  assert.match(r.audit.operation.statement, /tenantId/);
   assert.ok(r.audit.relations_touched.includes('vouchers'));
 });
 

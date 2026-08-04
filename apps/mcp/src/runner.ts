@@ -22,8 +22,8 @@ import { permissionsFor, type Permissions } from './permissions/mapping.js';
 import { buildEnvelope } from './envelope.js';
 import { allow as rateAllow } from './rateLimit.js';
 import { GuardRejectError } from './errors.js';
-import { denialMessage, errorMessage, textResult } from './responses.js';
-import { buildAuditBlock, type AuditSubject, type DenyReason, type Outcome } from './audit/block.js';
+import { denialMessage, errorMessage } from './responses.js';
+import { buildAuditBlock, type AuditBlock, type AuditSubject, type DenyReason, type Outcome } from './audit/block.js';
 import { writeLocalAudit } from './audit/audit.js';
 
 export interface ToolContext {
@@ -46,7 +46,15 @@ export type Work = (ctx: ToolContext) => Promise<WorkResult>;
 interface Extra {
   requestInfo?: { headers?: Record<string, string | string[] | undefined> };
 }
-type ToolResult = { content: Array<{ type: 'text'; text: string }> };
+// Spec correction §2.1: audit rides in structuredContent (a top-level {result,audit}
+// is not valid MCP and _meta is not surfaced to Atlas). §2.2: denials are a NORMAL
+// result (isError:false) so the audit record is never lost.
+interface ToolResult {
+  [x: string]: unknown;
+  content: Array<{ type: 'text'; text: string }>;
+  structuredContent: { data: unknown; audit: AuditBlock };
+  isError: boolean;
+}
 
 function header(headers: Record<string, string | string[] | undefined> | undefined, name: string): string | undefined {
   const v = headers?.[name] ?? headers?.[name.toLowerCase()];
@@ -79,16 +87,22 @@ export async function run(extra: Extra, tool: string, work: Work): Promise<ToolR
     columnsMasked?: string[];
     detail?: Record<string, unknown>;
   }
-  const finalize = async (payload: { result: unknown } | { error: string }, a: FinalizeArgs): Promise<ToolResult> => {
+  const respond = async (data: unknown, text: string, a: FinalizeArgs): Promise<ToolResult> => {
     const audit = buildAuditBlock({ tool, kind, startMs: start, ...a });
     void writeLocalAudit(audit).catch((e) => log.warn(a.correlationId, 'local audit write failed (non-fatal)', e));
-    return textResult(JSON.stringify({ ...payload, audit }));
+    return { content: [{ type: 'text', text }], structuredContent: { data, audit }, isError: false };
   };
   const deny = (reason: DenyReason, subject: AuditSubject, correlationId: string, detail?: Record<string, unknown>) =>
-    finalize(
-      { error: denialMessage(reason) },
-      { outcome: 'denied', denyReason: reason, subject, correlationId, statement: null, relations: [], rowCount: null, detail },
-    );
+    respond(null, denialMessage(reason), {
+      outcome: 'denied',
+      denyReason: reason,
+      subject,
+      correlationId,
+      statement: null,
+      relations: [],
+      rowCount: null,
+      detail,
+    });
 
   // 1. Verify the Atlas token. Nothing is trusted until this passes.
   const verified = await verifyToken(header(headers, 'authorization'));
@@ -145,16 +159,27 @@ export async function run(extra: Extra, tool: string, work: Work): Promise<ToolR
     if (client) await client.query('ROLLBACK').catch(() => undefined);
     const statement = executed.length ? executed.join(';\n') : null;
     if (e instanceof GuardRejectError) {
-      return finalize(
-        { error: denialMessage('not_allowed_operation') },
-        { outcome: 'denied', denyReason: 'not_allowed_operation', subject, correlationId, statement, relations: [], rowCount: null, detail: { reason: e.reason, role: principal.role } },
-      );
+      return respond(null, denialMessage('not_allowed_operation'), {
+        outcome: 'denied',
+        denyReason: 'not_allowed_operation',
+        subject,
+        correlationId,
+        statement,
+        relations: [],
+        rowCount: null,
+        detail: { reason: e.reason, role: principal.role },
+      });
     }
     log.error(correlationId, `tool ${tool} failed`, e); // full detail stays server-side
-    return finalize(
-      { error: errorMessage() },
-      { outcome: 'error', subject, correlationId, statement, relations: [], rowCount: null, detail: { role: principal.role } },
-    );
+    return respond(null, errorMessage(), {
+      outcome: 'error',
+      subject,
+      correlationId,
+      statement,
+      relations: [],
+      rowCount: null,
+      detail: { role: principal.role },
+    });
   } finally {
     if (client) client.release();
   }
@@ -163,10 +188,16 @@ export async function run(extra: Extra, tool: string, work: Work): Promise<ToolR
   const statement = executed.length ? executed.join(';\n') : null;
   const columnsMasked = maskedForRelations(perms, result.relations);
   if (result.type === 'doc') {
-    return finalize(
-      { result: result.json },
-      { outcome: 'ok', subject, correlationId, statement, relations: result.relations, rowCount: null, columnsMasked, detail: { role: principal.role, matched_by: principal.matchedBy } },
-    );
+    return respond(result.json, 'Catalog returned.', {
+      outcome: 'ok',
+      subject,
+      correlationId,
+      statement,
+      relations: result.relations,
+      rowCount: null,
+      columnsMasked,
+      detail: { role: principal.role, matched_by: principal.matchedBy },
+    });
   }
   const { envelope } = buildEnvelope(result.columns, result.rows, {
     rowCap: config.rowCap,
@@ -174,8 +205,14 @@ export async function run(extra: Extra, tool: string, work: Work): Promise<ToolR
     asOf: result.asOf,
     currency: result.currency,
   });
-  return finalize(
-    { result: envelope },
-    { outcome: 'ok', subject, correlationId, statement, relations: result.relations, rowCount: envelope.row_count, columnsMasked, detail: { role: principal.role, matched_by: principal.matchedBy } },
-  );
+  return respond(envelope, `${envelope.row_count} row(s) returned.`, {
+    outcome: 'ok',
+    subject,
+    correlationId,
+    statement,
+    relations: result.relations,
+    rowCount: envelope.row_count,
+    columnsMasked,
+    detail: { role: principal.role, matched_by: principal.matchedBy },
+  });
 }

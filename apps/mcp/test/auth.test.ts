@@ -37,8 +37,8 @@ async function mint(over: Over = {}): Promise<string> {
   if (!over.noOid) claims.oid = over.oid ?? randomUUID();
   return new jose.SignJWT(claims)
     .setProtectedHeader({ alg: 'RS256', kid: priv.kid })
-    .setIssuer(over.iss ?? 'atlas')
-    .setAudience(over.aud ?? 'accounting-mcp-dev')
+    .setIssuer(over.iss ?? process.env.ATLAS_ISS ?? 'atlas')
+    .setAudience(over.aud ?? process.env.MCP_AUD ?? 'accounting-mcp-local')
     .setJti(over.jti ?? randomUUID())
     .setIssuedAt(over.iat ?? now)
     .setNotBefore(over.nbf ?? now)

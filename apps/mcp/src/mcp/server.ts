@@ -28,6 +28,10 @@ const VOUCHER_TYPES = ['SALES', 'PURCHASE', 'PAYMENT', 'RECEIPT', 'JOURNAL', 'CO
 const VOUCHER_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'POSTED', 'REVERSED'] as const;
 const NETTING_STATUSES = ['OPEN', 'PENDING_AM', 'PENDING_CEO', 'APPROVED', 'REJECTED', 'AM_REJECTED', 'CEO_REJECTED', 'PARTIAL', 'SETTLED'] as const;
 
+// Every tool returns { data, audit } in structuredContent (Spec §2.1). `data` is
+// the tabular result / describe doc, or null on a denial/error.
+const OUTPUT_SCHEMA = { data: z.any(), audit: z.record(z.any()) };
+
 export function buildServer(): McpServer {
   const server = new McpServer({ name: `${config.systemSlug}-mcp`, version: '0.2.0' });
   const slug = config.systemSlug;
@@ -40,7 +44,7 @@ export function buildServer(): McpServer {
     const fullName = `${slug}_${name}`;
     server.registerTool(
       fullName,
-      cfg,
+      { ...cfg, outputSchema: OUTPUT_SCHEMA },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async (args: any, extra: any) => run(extra, fullName, (ctx) => fn(ctx, (args ?? {}) as Record<string, unknown>)),
     );
@@ -54,6 +58,7 @@ export function buildServer(): McpServer {
       description:
         'CALL THIS FIRST. Returns the caller-scoped catalog + domain primer: the datasets/tables/columns you may read for THIS user, which columns are masked for you, currency and date conventions, a glossary, and reading notes (incl. the invoice-based vs ledger-based distinction). No parameters.',
       inputSchema: {},
+      outputSchema: OUTPUT_SCHEMA,
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async (_args: any, extra: any) => run(extra, `${slug}_describe`, describe),
@@ -193,6 +198,7 @@ export function buildServer(): McpServer {
       inputSchema: {
         sql: z.string().describe('A single read-only SELECT over your allow-listed tables. Do not include a trailing semicolon or multiple statements.'),
       },
+      outputSchema: OUTPUT_SCHEMA,
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async (args: any, extra: any) => run(extra, `${slug}_query`, (ctx) => query(ctx, (args ?? {}) as Record<string, unknown>)),

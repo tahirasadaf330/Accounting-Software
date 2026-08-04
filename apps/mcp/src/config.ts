@@ -53,11 +53,11 @@ export const config: AppConfig = {
   host: str('MCP_HOST', '127.0.0.1'),
   port: int('MCP_PORT', 7801),
 
-  jwtIssuer: str('ATLAS_JWT_ISS', 'atlas'),
-  jwtAudience: str('ATLAS_JWT_AUD'),
+  jwtIssuer: str('ATLAS_ISS', 'atlas'),
+  jwtAudience: str('MCP_AUD'),
   jwksUrl: str('ATLAS_JWKS_URL'),
   jwtPublicKeyFile: str('ATLAS_JWT_PUBLIC_KEY_FILE'),
-  clockToleranceSec: int('ATLAS_JWT_CLOCK_TOLERANCE', 60),
+  clockToleranceSec: int('ATLAS_TOKEN_LEEWAY_S', 60),
 
   roDatabaseUrl: str('MCP_DATABASE_URL'),
   auditDatabaseUrl: str('MCP_AUDIT_DATABASE_URL'),
@@ -78,7 +78,7 @@ export function validateConfigOrExit(): void {
   const warnings: string[] = [];
 
   if (!config.jwtAudience) {
-    problems.push('ATLAS_JWT_AUD is unset — required to reject tokens minted for another MCP.');
+    problems.push('MCP_AUD is unset — required to reject tokens minted for another MCP.');
   }
   if (!config.jwksUrl && !config.jwtPublicKeyFile) {
     problems.push('No token verification key: set ATLAS_JWKS_URL (prod) or ATLAS_JWT_PUBLIC_KEY_FILE (dev).');

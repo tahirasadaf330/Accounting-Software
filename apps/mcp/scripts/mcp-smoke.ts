@@ -1,16 +1,12 @@
 /**
  * Tiny MCP client that MINTS an Atlas-style RS256 token per call (Spec §3) using
- * the dev private key, then drives the connector. This stands in for Atlas
- * locally — a static Bearer header can't be reused (jti replay), so we sign fresh.
+ * the dev private key, then drives the connector. Reads { data, audit } from
+ * structuredContent (Spec §2.1). Stands in for Atlas locally.
  *
- *   pnpm --filter mcp gen:keys      # once — creates dev-keys/
- *   pnpm --filter mcp smoke                         # OWNER (default user), describe
+ *   pnpm --filter mcp gen:keys                      # once — creates dev-keys/
+ *   pnpm --filter mcp smoke                          # OWNER (default), describe
  *   pnpm --filter mcp smoke ali@hayo.net --tool accounting_ar_aging --args {}
- *   pnpm --filter mcp smoke --no-user               # no token       -> bad_token
- *   pnpm --filter mcp smoke --bad-sig               # wrong key      -> bad_token
- *   pnpm --filter mcp smoke --expired               # expired token  -> token_expired
- *   pnpm --filter mcp smoke --wrong-aud             # other MCP's aud-> bad_token
- *   pnpm --filter mcp smoke --replay                # reuse a token  -> token_replayed
+ *   pnpm --filter mcp smoke --no-user | --bad-sig | --expired | --wrong-aud | --replay
  */
 import 'dotenv/config';
 import { readFileSync } from 'node:fs';
@@ -33,17 +29,13 @@ async function mintToken(email: string, opts: MintOpts = {}): Promise<string> {
   const jose = await import('jose');
   const privJwk = JSON.parse(readFileSync('dev-keys/private.jwk.json', 'utf8'));
   let key = await jose.importJWK(privJwk, 'RS256');
-  let kid = privJwk.kid ?? 'dev-1';
-  if (opts.badSig) {
-    const kp = await jose.generateKeyPair('RS256', { extractable: true });
-    key = kp.privateKey; // sign with an unknown key → signature fails
-    kid = 'dev-1';
-  }
+  const kid = privJwk.kid ?? 'dev-1';
+  if (opts.badSig) key = (await jose.generateKeyPair('RS256', { extractable: true })).privateKey;
   const now = Math.floor(Date.now() / 1000);
-  const aud = opts.wrongAud ? 'some-other-mcp' : process.env.ATLAS_JWT_AUD || 'accounting-mcp-dev';
+  const aud = opts.wrongAud ? 'some-other-mcp' : process.env.MCP_AUD || 'accounting-mcp-local';
   return new jose.SignJWT({ oid: oidFor(email), email, name: 'Smoke Tester', correlation_id: 'smoke-' + randomUUID().slice(0, 8) })
     .setProtectedHeader({ alg: 'RS256', kid })
-    .setIssuer(process.env.ATLAS_JWT_ISS || 'atlas')
+    .setIssuer(process.env.ATLAS_ISS || 'atlas')
     .setAudience(aud)
     .setJti(randomUUID())
     .setIssuedAt(opts.expired ? now - 600 : now)
@@ -57,20 +49,27 @@ function flagValue(args: string[], flag: string): string | undefined {
   return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
 }
 
-async function callOnce(target: string, token: string | null, tool: string, toolArgs: unknown): Promise<string> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function callOnce(target: string, token: string | null, tool: string, toolArgs: unknown): Promise<any> {
   const headers: Record<string, string> = {};
   if (token) headers.authorization = `Bearer ${token}`;
   const transport = new StreamableHTTPClientTransport(new URL(target), { requestInit: { headers } });
   const client = new Client({ name: 'acct-smoke', version: '0.0.0' });
   await client.connect(transport);
   try {
-    const res = (await client.callTool({ name: tool, arguments: toolArgs as Record<string, unknown> })) as {
-      content?: Array<{ text?: string }>;
-    };
-    return (res.content ?? []).map((c) => c.text ?? '').join('\n');
+    return await client.callTool({ name: tool, arguments: toolArgs as Record<string, unknown> });
   } finally {
     await client.close();
   }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function printResponse(tool: string, res: any): void {
+  const sc = res?.structuredContent;
+  const audit = sc?.audit;
+  const text = (res?.content ?? []).map((c: { text?: string }) => c.text ?? '').join(' ');
+  console.log(`${tool} -> outcome=${audit?.outcome ?? '?'} deny_reason=${audit?.deny_reason ?? '-'} | ${text}`);
+  if (sc?.data != null) console.log('  data:', JSON.stringify(sc.data).slice(0, 500));
 }
 
 async function main(): Promise<void> {
@@ -86,27 +85,12 @@ async function main(): Promise<void> {
   console.log('── scenario:', JSON.stringify({ user: noUser ? '(no token)' : user, tool, ...opts, replay }));
 
   const token = noUser ? null : await mintToken(user, opts);
-  const text = await callOnce(target, token, tool, toolArgs);
-  printResponse(tool, text);
+  printResponse(tool, await callOnce(target, token, tool, toolArgs));
 
   if (replay && token) {
     console.log('\n── replaying the SAME token …');
     printResponse(tool, await callOnce(target, token, tool, toolArgs));
   }
-}
-
-function printResponse(tool: string, text: string): void {
-  let parsed: { result?: unknown; error?: string; audit?: { outcome?: string; deny_reason?: string | null } };
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    console.log(`${tool} -> (non-JSON)`, text);
-    return;
-  }
-  const a = parsed.audit;
-  console.log(`${tool} -> outcome=${a?.outcome} deny_reason=${a?.deny_reason ?? '-'}`);
-  if (parsed.error) console.log('  error:', parsed.error);
-  if (parsed.result !== undefined) console.log('  result:', JSON.stringify(parsed.result).slice(0, 600));
 }
 
 main().catch((e) => {
