@@ -14,6 +14,7 @@
     "test:unit": "tsx --test test/sqlGuard.test.ts test/auth.test.ts",
     "db:setup": "tsx scripts/setup-local-db.ts",
     "gen:keys": "tsx scripts/gen-dev-keys.ts",
+    "kit": "tsx scripts/kit-conformance.ts",
     "smoke": "tsx scripts/mcp-smoke.ts",
     "inspect": "mcp-inspector"
   },
