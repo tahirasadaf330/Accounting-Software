@@ -1,24 +1,31 @@
 /**
- * Resolve a caller's e-mail to ONE role + tenant from the LOCAL mirror (the
- * app's users table). No Microsoft Graph call on the request path (Guide 1.3).
+ * Resolve a verified token's identity to ONE local user + role (Spec §3.4/§3.5).
  *
- * Deny-by-default (3.4): unknown, inactive, non-tenant role, missing tenant, or
- * ambiguous (>1 row) all fail closed. The resolution — including denials — is
- * cached for <= 60s (3.5). Resolver ERRORS are never cached (don't pin an outage).
- *
- * Reads only identity columns of `users` (email, role, tenantId, status); the
- * DB grant is column-scoped so this account can never read passwordHash/mfaSecret.
+ * Match order: oid → email (case-insensitive, trimmed) → write-once oid backfill.
+ * Deny-by-default: unknown, ambiguous (>1), inactive, non-tenant role, or no
+ * tenant all fail closed. Resolution is cached ≤60s (keyed by oid). Backfill is a
+ * narrow identity write via the oid-writer account; the data path stays read-only.
  */
 import { Role, TENANT_ROLES } from '@accounting-saas/shared';
-import { roPool } from '../db/pools.js';
+import { roPool, oidWriterPool } from '../db/pools.js';
 import { config } from '../config.js';
 import { log } from '../logging.js';
 
+export interface Principal {
+  localUserId: string;
+  oid: string;
+  email: string | null;
+  role: Role;
+  tenantId: string;
+  matchedBy: 'oid' | 'email';
+}
+
 export type ResolveResult =
-  | { ok: true; principal: { userId: string; role: Role; tenantId: string } }
-  | { ok: false; reason: string };
+  | { ok: true; principal: Principal }
+  | { ok: false; reason: 'no_account' | 'ambiguous_account' };
 
 const TENANT_ROLE_SET = new Set<string>(TENANT_ROLES as readonly string[]);
+const SELECT_COLS = 'id, email, role, "tenantId" AS "tenantId", status, oid';
 
 interface CacheEntry {
   expires: number;
@@ -27,41 +34,84 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const MAX_CACHE = 5000;
 
-export async function resolvePrincipal(email: string, requestId: string | null): Promise<ResolveResult> {
+export async function resolvePrincipal(
+  claims: { oid: string; email: string | null },
+  requestId: string | null,
+): Promise<ResolveResult> {
   const now = Date.now();
-  const hit = cache.get(email);
+  const hit = cache.get(claims.oid);
   if (hit && hit.expires > now) return hit.result;
 
   let result: ResolveResult;
   try {
-    const { rows } = await roPool.query(
-      'SELECT email, role, "tenantId" AS "tenantId", status FROM users WHERE lower(email) = $1 LIMIT 2',
-      [email],
-    );
-    if (rows.length === 0) {
-      result = { ok: false, reason: 'no principal' };
-    } else if (rows.length > 1) {
-      // Multiple accounts for one e-mail = misconfiguration → DENY (never merge).
-      result = { ok: false, reason: 'ambiguous principal' };
-    } else {
-      const r = rows[0] as { role: string; tenantId: string | null; status: string };
-      if (r.status !== 'ACTIVE') result = { ok: false, reason: 'inactive' };
-      else if (!TENANT_ROLE_SET.has(r.role)) result = { ok: false, reason: 'role not permitted' };
-      else if (!r.tenantId) result = { ok: false, reason: 'no tenant' };
-      else result = { ok: true, principal: { userId: email, role: r.role as Role, tenantId: r.tenantId } };
-    }
+    result = await resolveUncached(claims, requestId);
   } catch (e) {
-    // Fail closed but do NOT cache — a transient DB error must not pin denials.
     log.error(requestId, 'role resolver error', e);
-    return { ok: false, reason: 'resolver error' };
+    return { ok: false, reason: 'no_account' }; // fail closed; do NOT cache errors
   }
 
   if (cache.size >= MAX_CACHE) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
+    const k = cache.keys().next().value;
+    if (k !== undefined) cache.delete(k);
   }
-  cache.set(email, { expires: now + config.roleCacheTtlMs, result });
+  cache.set(claims.oid, { expires: now + config.roleCacheTtlMs, result });
   return result;
+}
+
+async function resolveUncached(
+  claims: { oid: string; email: string | null },
+  requestId: string | null,
+): Promise<ResolveResult> {
+  // 1. by oid (primary — never changes)
+  let rows = (await roPool.query(`SELECT ${SELECT_COLS} FROM users WHERE oid = $1 LIMIT 2`, [claims.oid])).rows;
+  let matchedBy: 'oid' | 'email' = 'oid';
+
+  // 2. fallback by email
+  if (rows.length === 0 && claims.email) {
+    rows = (await roPool.query(`SELECT ${SELECT_COLS} FROM users WHERE lower(email) = lower($1) LIMIT 2`, [claims.email.trim()])).rows;
+    matchedBy = 'email';
+  }
+
+  if (rows.length === 0) return { ok: false, reason: 'no_account' };
+  if (rows.length > 1) return { ok: false, reason: 'ambiguous_account' };
+
+  const u = rows[0] as { id: string; email: string | null; role: string; tenantId: string | null; status: string; oid: string | null };
+  // inactive / locked → identical generic outcome as "no account"
+  if (u.status !== 'ACTIVE') return { ok: false, reason: 'no_account' };
+  if (!TENANT_ROLE_SET.has(u.role) || !u.tenantId) return { ok: false, reason: 'no_account' };
+
+  // 3. write-once oid backfill: only when empty, only after the active check,
+  // only when the matched row's email genuinely equals the token email.
+  if (
+    matchedBy === 'email' &&
+    !u.oid &&
+    oidWriterPool &&
+    claims.email &&
+    u.email &&
+    u.email.toLowerCase() === claims.email.trim().toLowerCase()
+  ) {
+    try {
+      await oidWriterPool.query('UPDATE users SET oid = $1 WHERE id = $2 AND oid IS NULL AND lower(email) = lower($3)', [
+        claims.oid,
+        u.id,
+        claims.email.trim(),
+      ]);
+    } catch (e) {
+      log.warn(requestId, 'oid backfill failed (non-fatal)', e);
+    }
+  }
+
+  return {
+    ok: true,
+    principal: {
+      localUserId: u.id,
+      oid: claims.oid,
+      email: u.email ?? null,
+      role: u.role as Role,
+      tenantId: u.tenantId,
+      matchedBy,
+    },
+  };
 }
 
 /** Test helper — clears the in-process resolution cache. */

@@ -1,125 +1,137 @@
 /**
- * End-to-end integration tests (Guide 8.1 / 11.1). Drives the running connector
- * through a real MCP client with identity headers, then checks the audit DB.
- *
- * REQUIRES: `pnpm --filter mcp db:setup` done, and the server running
- * (`pnpm --filter mcp dev`). If the server is unreachable, these tests SKIP.
+ * End-to-end integration (Hayo MCP Integration Spec). Mints Atlas-style RS256
+ * tokens and drives the running connector, checking the {result|error, audit}
+ * shape and per-role scoping. REQUIRES: `pnpm --filter mcp gen:keys`, db:setup,
+ * and the server running. SKIPS if the server or dev keys are absent.
  */
 import 'dotenv/config';
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { Client as PgClient } from 'pg';
 
 const MCP_URL = process.env.MCP_URL || 'http://127.0.0.1:7801/mcp';
 const HEALTH = MCP_URL.replace(/\/mcp$/, '/health');
-const SECRET = process.env.ATLAS_MCP_SECRET || '';
+const AUD = process.env.ATLAS_JWT_AUD || 'accounting-mcp-dev';
 const OWNER = 'tahira.sadaf@kingrevolution.com';
 const PAYMENT_OFFICER = 'imran.abbas@kingrevolution.com';
-const DENIAL = /Access denied/;
-const REJECT = /Query rejected/;
+const KEYS = 'dev-keys/private.jwk.json';
 
 let up = false;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let priv: any;
 before(async () => {
+  if (!existsSync(KEYS)) {
+    console.warn('\n[integration] dev-keys missing — run `pnpm --filter mcp gen:keys`. Skipping.\n');
+    return;
+  }
+  priv = JSON.parse(readFileSync(KEYS, 'utf8'));
   try {
-    const r = await fetch(HEALTH);
-    up = r.ok;
+    up = (await fetch(HEALTH)).ok;
   } catch {
     up = false;
   }
-  if (!up) console.warn(`\n[integration] server not reachable at ${HEALTH} — these tests will skip.\n`);
+  if (!up) console.warn(`\n[integration] server not reachable at ${HEALTH} — skipping.\n`);
 });
 
-interface CallOpts {
-  user?: string;
-  secret?: string;
-  noUser?: boolean;
+function oidFor(email: string): string {
+  const h = createHash('sha256').update(email.toLowerCase()).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
 
-async function call(tool: string, args: Record<string, unknown>, opts: CallOpts = {}): Promise<string> {
-  const headers: Record<string, string> = {
-    'x-atlas-agent-key': opts.secret ?? SECRET,
-    'x-atlas-request-id': 'itest-' + Math.random().toString(36).slice(2),
-  };
-  if (!opts.noUser) headers['x-atlas-user-id'] = opts.user ?? OWNER;
+interface TokOpts {
+  aud?: string;
+  expired?: boolean;
+}
+async function mint(email: string, opts: TokOpts = {}): Promise<string> {
+  const jose = await import('jose');
+  const key = await jose.importJWK(priv, 'RS256');
+  const now = Math.floor(Date.now() / 1000);
+  return new jose.SignJWT({ oid: oidFor(email), email, correlation_id: 'itest-' + randomUUID().slice(0, 8) })
+    .setProtectedHeader({ alg: 'RS256', kid: priv.kid })
+    .setIssuer('atlas')
+    .setAudience(opts.aud ?? AUD)
+    .setJti(randomUUID())
+    .setIssuedAt(opts.expired ? now - 600 : now)
+    .setNotBefore(opts.expired ? now - 600 : now)
+    .setExpirationTime(opts.expired ? now - 300 : now + 120)
+    .sign(key);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function call(token: string | null, tool: string, args: Record<string, unknown>): Promise<any> {
+  const headers: Record<string, string> = {};
+  if (token) headers.authorization = `Bearer ${token}`;
   const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), { requestInit: { headers } });
   const client = new Client({ name: 'itest', version: '0.0.0' });
   await client.connect(transport);
   try {
     const res = (await client.callTool({ name: tool, arguments: args })) as { content?: Array<{ text?: string }> };
-    return (res.content ?? []).map((c) => c.text ?? '').join('\n');
+    return JSON.parse((res.content ?? []).map((c) => c.text ?? '').join(''));
   } finally {
     await client.close();
   }
 }
 
-test('describe: OWNER sees all 6 datasets', async (t) => {
-  if (!up) return t.skip('server not running');
-  const j = JSON.parse(await call('accounting_describe', {}, { user: OWNER }));
-  assert.equal(j.datasets.length, 6);
+test('describe: OWNER → 6 datasets, audit ok', async (t) => {
+  if (!up) return t.skip('server/keys not available');
+  const r = await call(await mint(OWNER), 'accounting_describe', {});
+  assert.equal(r.result.datasets.length, 6);
+  assert.equal(r.audit.outcome, 'ok');
+  assert.equal(r.audit.schema_version, 1);
+  assert.equal(r.audit.system, 'accounting');
+  assert.equal(r.audit.subject.email, OWNER);
+  assert.ok(r.audit.subject.oid);
+  assert.ok(r.audit.server_time.endsWith('Z'));
 });
 
-test('describe: PAYMENT_OFFICER sees only 3 datasets', async (t) => {
-  if (!up) return t.skip('server not running');
-  const j = JSON.parse(await call('accounting_describe', {}, { user: PAYMENT_OFFICER }));
-  assert.equal(j.datasets.length, 3);
+test('describe: PAYMENT_OFFICER → 3 datasets', async (t) => {
+  if (!up) return t.skip();
+  const r = await call(await mint(PAYMENT_OFFICER), 'accounting_describe', {});
+  assert.equal(r.result.datasets.length, 3);
 });
 
-test('auth: wrong secret → generic denial', async (t) => {
-  if (!up) return t.skip('server not running');
-  assert.match(await call('accounting_describe', {}, { user: OWNER, secret: 'definitely-the-wrong-secret-0000000000' }), DENIAL);
+test('no token → error/bad_token, audit present', async (t) => {
+  if (!up) return t.skip();
+  const r = await call(null, 'accounting_describe', {});
+  assert.ok(r.error);
+  assert.equal(r.audit.outcome, 'denied');
+  assert.equal(r.audit.deny_reason, 'bad_token');
+  assert.equal(r.audit.subject.oid, null);
 });
 
-test('auth: missing user id → generic denial', async (t) => {
-  if (!up) return t.skip('server not running');
-  assert.match(await call('accounting_describe', {}, { noUser: true }), DENIAL);
+test('expired token → token_expired', async (t) => {
+  if (!up) return t.skip();
+  const r = await call(await mint(OWNER, { expired: true }), 'accounting_describe', {});
+  assert.equal(r.audit.deny_reason, 'token_expired');
 });
 
-test('auth: unknown user → generic denial', async (t) => {
-  if (!up) return t.skip('server not running');
-  assert.match(await call('accounting_describe', {}, { user: 'nobody@nowhere.example' }), DENIAL);
+test('wrong audience → bad_token', async (t) => {
+  if (!up) return t.skip();
+  const r = await call(await mint(OWNER, { aud: 'some-other-mcp' }), 'accounting_describe', {});
+  assert.equal(r.audit.deny_reason, 'bad_token');
 });
 
-test('role: PAYMENT_OFFICER blocked from the general ledger (trial balance)', async (t) => {
-  if (!up) return t.skip('server not running');
-  assert.match(await call('accounting_trial_balance', {}, { user: PAYMENT_OFFICER }), REJECT);
+test('role: PAYMENT_OFFICER blocked from general ledger', async (t) => {
+  if (!up) return t.skip();
+  const r = await call(await mint(PAYMENT_OFFICER), 'accounting_trial_balance', {});
+  assert.equal(r.audit.outcome, 'denied');
+  assert.equal(r.audit.deny_reason, 'not_allowed_operation');
 });
 
-test('escape hatch: valid SELECT returns data', async (t) => {
-  if (!up) return t.skip('server not running');
-  const j = JSON.parse(await call('accounting_query', { sql: 'SELECT count(*) AS n FROM vouchers' }, { user: OWNER }));
-  assert.ok(j.columns.includes('n'));
-  assert.equal(j.row_count, 1);
+test('escape hatch: valid SELECT → ok, numbers, audit shows the executed statement', async (t) => {
+  if (!up) return t.skip();
+  const r = await call(await mint(OWNER), 'accounting_query', { sql: 'SELECT count(*) AS n FROM vouchers' });
+  assert.equal(r.audit.outcome, 'ok');
+  assert.equal(typeof r.result.rows[0][0], 'number');
+  assert.match(r.audit.operation.statement, /tenantId/); // tenant predicate injected
+  assert.ok(r.audit.relations_touched.includes('vouchers'));
 });
 
-test('escape hatch: out-of-allow-list table → guard reject', async (t) => {
-  if (!up) return t.skip('server not running');
-  assert.match(await call('accounting_query', { sql: 'SELECT * FROM users' }, { user: OWNER }), REJECT);
-});
-
-test('escape hatch: multi-statement → guard reject', async (t) => {
-  if (!up) return t.skip('server not running');
-  assert.match(await call('accounting_query', { sql: 'SELECT 1; DROP TABLE vouchers' }, { user: OWNER }), REJECT);
-});
-
-test('audit: a row is written per call (incl. denials)', async (t) => {
-  if (!up) return t.skip('server not running');
-  const adminDsn = process.env.MCP_ADMIN_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/accounting_dev';
-  const pg = new PgClient({ connectionString: adminDsn });
-  await pg.connect();
-  try {
-    const before = (await pg.query("SELECT count(*)::int n FROM mcp_audit_log WHERE tool = 'accounting_data_freshness'")).rows[0].n;
-    await call('accounting_data_freshness', {}, { user: OWNER });
-    // bad secret is audited too (with null user)
-    await call('accounting_data_freshness', {}, { user: OWNER, secret: 'wrong-0000000000000000000000000000000' });
-    const after = (await pg.query("SELECT count(*)::int n FROM mcp_audit_log WHERE tool = 'accounting_data_freshness'")).rows[0].n;
-    assert.ok(after >= before + 2, `expected >=2 new audit rows, before=${before} after=${after}`);
-    const probe = (
-      await pg.query("SELECT count(*)::int n FROM mcp_audit_log WHERE outcome = 'denied' AND deny_reason = 'bad agent key'")
-    ).rows[0].n;
-    assert.ok(probe >= 1, 'bad-secret probe should be audited with a deny reason');
-  } finally {
-    await pg.end();
-  }
+test('escape hatch: out-of-allow-list table → not_allowed_operation', async (t) => {
+  if (!up) return t.skip();
+  const r = await call(await mint(OWNER), 'accounting_query', { sql: 'SELECT * FROM users' });
+  assert.equal(r.audit.deny_reason, 'not_allowed_operation');
 });

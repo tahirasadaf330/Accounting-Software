@@ -86,7 +86,7 @@ export async function describe(ctx: ToolContext): Promise<WorkResult> {
     relations: allowedTables,
     json: {
       about: `${config.systemLabel}: read-only connector over a double-entry accounting ledger (slug: ${config.systemSlug}). Invoices, bills, payments and receipts are all Voucher rows discriminated by voucherType. You are scoped to ONE tenant and ONE role; you see only the datasets listed below.`,
-      currency: 'All monetary values are in the tenant base currency (USD for this tenant). Columns suffixed _usd are explicitly USD.',
+      currency: "Monetary values are raw numbers (never formatted); their currency is given by each tabular result's `currency` field (USD for this tenant).",
       conventions: {
         timezone: 'UTC',
         dates: 'ISO-8601 (YYYY-MM-DD)',

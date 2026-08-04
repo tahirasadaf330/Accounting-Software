@@ -147,7 +147,7 @@ async function handleMcpSession(req: IncomingMessage, res: ServerResponse): Prom
 async function handleReady(res: ServerResponse): Promise<void> {
   try {
     await roPool.query('SELECT 1');
-    await auditPool.query('SELECT 1');
+    if (auditPool) await auditPool.query('SELECT 1');
     sendJson(res, 200, { status: 'ready' });
   } catch (e) {
     log.warn(null, 'readiness check failed', e);

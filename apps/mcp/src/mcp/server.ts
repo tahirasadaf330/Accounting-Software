@@ -42,7 +42,7 @@ export function buildServer(): McpServer {
       fullName,
       cfg,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (args: any, extra: any) => run(extra, fullName, null, (ctx) => fn(ctx, (args ?? {}) as Record<string, unknown>)),
+      async (args: any, extra: any) => run(extra, fullName, (ctx) => fn(ctx, (args ?? {}) as Record<string, unknown>)),
     );
   };
 
@@ -56,7 +56,7 @@ export function buildServer(): McpServer {
       inputSchema: {},
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async (_args: any, extra: any) => run(extra, `${slug}_describe`, null, describe),
+    async (_args: any, extra: any) => run(extra, `${slug}_describe`, describe),
   );
 
   reg(
@@ -195,10 +195,7 @@ export function buildServer(): McpServer {
       },
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async (args: any, extra: any) => {
-      const sqlText = typeof args?.sql === 'string' ? args.sql : null;
-      return run(extra, `${slug}_query`, sqlText, (ctx) => query(ctx, (args ?? {}) as Record<string, unknown>));
-    },
+    async (args: any, extra: any) => run(extra, `${slug}_query`, (ctx) => query(ctx, (args ?? {}) as Record<string, unknown>)),
   );
 
   return server;

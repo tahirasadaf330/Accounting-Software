@@ -13,6 +13,7 @@
     "test": "tsx --test test/sqlGuard.test.ts test/auth.test.ts test/integration.test.ts",
     "test:unit": "tsx --test test/sqlGuard.test.ts test/auth.test.ts",
     "db:setup": "tsx scripts/setup-local-db.ts",
+    "gen:keys": "tsx scripts/gen-dev-keys.ts",
     "smoke": "tsx scripts/mcp-smoke.ts",
     "inspect": "mcp-inspector"
   },
@@ -20,6 +21,7 @@
     "@accounting-saas/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^16.4.7",
+    "jose": "^6.1.0",
     "pg": "^8.22.0",
     "pgsql-ast-parser": "^12.0.2",
     "zod": "^3.25.0"

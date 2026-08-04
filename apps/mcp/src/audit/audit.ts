@@ -1,49 +1,28 @@
 /**
- * Append-only audit log (Guide 3.6). One row per tool call — including denials
- * and bad-secret probes — written BEFORE data is returned. The audit table is
- * written by a separate INSERT-only account; the read-only account has no grants
- * on it. If this write fails, the caller returns 'unavailable', NOT data.
+ * OPTIONAL local audit copy. Under the Hayo spec, Atlas is the single logger and
+ * we RETURN the audit block (see block.ts). Keeping a local append-only copy is a
+ * convenience for our own ops — so it is BEST-EFFORT: if it fails we log and move
+ * on (we never block the response on it, because Atlas already has the block).
  */
 import { auditPool } from '../db/pools.js';
-import { config } from '../config.js';
+import type { AuditBlock } from './block.js';
 
-export interface AuditRow {
-  requestId: string | null;
-  userEmail: string | null;
-  role: string | null;
-  tool: string;
-  queryText: string | null;
-  relations: string[] | null;
-  rowCount: number | null;
-  outcome: 'ok' | 'denied' | 'error';
-  denyReason: string | null;
-}
-
-/** Remove secret-shaped values before persisting query text. */
-function scrub(text: string | null): string | null {
-  if (!text) return text;
-  let out = text;
-  for (const secret of [config.secret, config.secretOld]) {
-    if (secret) out = out.split(secret).join('[redacted]');
-  }
-  return out;
-}
-
-export async function writeAudit(row: AuditRow): Promise<void> {
+export async function writeLocalAudit(block: AuditBlock): Promise<void> {
+  if (!auditPool) return; // local copy disabled
   await auditPool.query(
     `INSERT INTO mcp_audit_log
        (request_id, user_email, role, tool, query_text, relations, row_count, outcome, deny_reason)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
-      row.requestId,
-      row.userEmail,
-      row.role,
-      row.tool,
-      scrub(row.queryText),
-      row.relations,
-      row.rowCount,
-      row.outcome,
-      row.denyReason,
+      block.correlation_id,
+      block.subject.email,
+      (block.detail?.role as string | undefined) ?? null,
+      block.tool,
+      block.operation.statement,
+      block.relations_touched,
+      block.row_count,
+      block.outcome,
+      block.deny_reason,
     ],
   );
 }

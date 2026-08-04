@@ -32,17 +32,28 @@ BEGIN
   ELSE
     CREATE ROLE atlas_mcp_audit LOGIN PASSWORD '__AUDIT_PASSWORD__' CONNECTION LIMIT 4;
   END IF;
+
+  -- Narrow identity writer (Spec §3.4): its ONLY write is UPDATE(oid) ON users.
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'atlas_mcp_oid') THEN
+    ALTER ROLE atlas_mcp_oid WITH LOGIN PASSWORD '__OID_WRITER_PASSWORD__' CONNECTION LIMIT 4;
+  ELSE
+    CREATE ROLE atlas_mcp_oid LOGIN PASSWORD '__OID_WRITER_PASSWORD__' CONNECTION LIMIT 4;
+  END IF;
 END
 $$;
 
 ALTER ROLE atlas_mcp       NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 ALTER ROLE atlas_mcp_audit NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+ALTER ROLE atlas_mcp_oid   NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
 
 -- Pin behaviour on the read-only account (belt-and-braces with the runner).
 ALTER ROLE atlas_mcp SET search_path = public;
 ALTER ROLE atlas_mcp SET default_transaction_read_only = on;
 ALTER ROLE atlas_mcp SET statement_timeout = '30s';
 ALTER ROLE atlas_mcp SET idle_in_transaction_session_timeout = '30s';
+
+ALTER ROLE atlas_mcp_oid SET search_path = public;
+ALTER ROLE atlas_mcp_oid SET statement_timeout = '10s';
 
 -- ---------------------------------------------------------------------------
 -- 2. Deny by default, then GRANT the exact allow-list.
@@ -87,7 +98,13 @@ GRANT SELECT ON public.fiscal_periods         TO atlas_mcp;
 --    Only the columns needed to resolve role/tenant — NEVER passwordHash /
 --    mfaSecret. A guard bypass still cannot read secrets.
 -- ---------------------------------------------------------------------------
-GRANT SELECT (id, email, role, "tenantId", status) ON public.users TO atlas_mcp;
+GRANT SELECT (id, email, role, "tenantId", status, oid) ON public.users TO atlas_mcp;
+
+-- Narrow identity writer (Spec §3.4 write-once oid backfill): can read only
+-- id/email/oid (for the WHERE) and write ONLY the oid column — nothing else.
+GRANT USAGE ON SCHEMA public TO atlas_mcp_oid;
+GRANT SELECT (id, email, oid) ON public.users TO atlas_mcp_oid;
+GRANT UPDATE (oid)           ON public.users TO atlas_mcp_oid;
 
 -- Tables deliberately NOT granted (deny-by-default): users(full), refresh_tokens,
 -- password_reset_tokens, invitations, notifications, audit_logs, account_templates,

@@ -1,26 +1,30 @@
 /**
- * The THREE approved response strings (Guide A.6). These are the ONLY messages
- * that ever reach the agent for a denial/rejection/error. Never leak exceptions,
- * driver messages, SQL fragments, table/column names, or stack traces.
+ * User-facing messages (Spec §3.6). Say little — never reveal which check failed.
+ * The precise reason goes in the audit block, not here.
  */
-import { config } from './config.js';
+import type { DenyReason } from './audit/block.js';
 
-/** The ONE generic denial for EVERY deny path — identical wording each time. */
-export function denialMessage(): string {
-  return `Access denied: your account is not provisioned for ${config.systemLabel} (or it is inactive).`;
+export function denialMessage(reason: DenyReason): string {
+  switch (reason) {
+    case 'no_account':
+    case 'ambiguous_account':
+      return 'Access denied: no account provisioned, or it is inactive.';
+    case 'no_permission':
+    case 'not_allowed_operation':
+      return 'Access denied: you do not have access to that data.';
+    case 'rate_limited':
+      return 'Rate limit exceeded; please retry shortly.';
+    // bad_token / token_expired / token_replayed — reveal nothing at all
+    default:
+      return 'Access denied.';
+  }
 }
 
-/** SQL-guard rejection. Never names the offending tables/columns. */
-export function guardRejectMessage(): string {
-  return `Query rejected: it references tables or columns outside your access.`;
+export function errorMessage(): string {
+  return 'The request could not be completed.';
 }
 
-/** Internal errors / limit breaches. Carries only the request id for tracing. */
-export function internalErrorMessage(requestId: string | null): string {
-  return `${config.systemLabel} could not complete that request (ref: ${requestId ?? 'n/a'}).`;
-}
-
-/** Shape every tool result the agent receives: a normal text result. */
+/** Every tool result is a single text item carrying the JSON envelope. */
 export function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] };
 }

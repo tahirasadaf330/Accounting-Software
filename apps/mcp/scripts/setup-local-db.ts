@@ -19,6 +19,7 @@ import { DATASETS } from '../src/permissions/mapping.js';
 const ADMIN = process.env.MCP_ADMIN_DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/accounting_dev';
 const MCP_PW = process.env.MCP_DB_PASSWORD || 'atlas_mcp_pw';
 const AUDIT_PW = process.env.MCP_AUDIT_DB_PASSWORD || 'atlas_mcp_audit_pw';
+const OID_PW = process.env.MCP_OID_DB_PASSWORD || 'atlas_mcp_oid_pw';
 
 function adminHost(dsn: string): { host: string; port: string; db: string } {
   try {
@@ -72,7 +73,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  sql = sql.split('__MCP_PASSWORD__').join(MCP_PW).split('__AUDIT_PASSWORD__').join(AUDIT_PW);
+  sql = sql
+    .split('__MCP_PASSWORD__')
+    .join(MCP_PW)
+    .split('__AUDIT_PASSWORD__')
+    .join(AUDIT_PW)
+    .split('__OID_WRITER_PASSWORD__')
+    .join(OID_PW);
 
   const a = adminHost(ADMIN);
   console.log(`Applying db-hardening.sql to ${a.host}:${a.port}/${a.db} …`);
@@ -106,6 +113,16 @@ async function main(): Promise<void> {
   );
   await expectFail(auditDsn, 'SELECT * FROM mcp_audit_log LIMIT 1', 'atlas_mcp_audit CANNOT read the audit table', results);
   await expectFail(auditDsn, "UPDATE mcp_audit_log SET outcome = 'error'", 'atlas_mcp_audit CANNOT update the audit table', results);
+
+  // atlas_mcp can now read users.oid too:
+  await expectOk(roDsn, 'SELECT oid FROM users LIMIT 1', 'atlas_mcp can read users.oid', results);
+
+  // Narrow oid writer: can write ONLY the oid column, nothing else:
+  const oidDsn = mcpDsn('atlas_mcp_oid', OID_PW);
+  await expectOk(oidDsn, 'UPDATE users SET oid = oid WHERE 1=0', 'atlas_mcp_oid CAN UPDATE users.oid (write-once backfill)', results);
+  await expectFail(oidDsn, 'SELECT "passwordHash" FROM users LIMIT 1', 'atlas_mcp_oid CANNOT read users.passwordHash', results);
+  await expectFail(oidDsn, 'UPDATE users SET status = status WHERE 1=0', 'atlas_mcp_oid CANNOT update any other column', results);
+  await expectFail(oidDsn, 'SELECT * FROM contacts LIMIT 1', 'atlas_mcp_oid CANNOT read data tables', results);
 
   console.log(results.join('\n'));
   const failed = results.filter((r) => r.startsWith('FAIL'));

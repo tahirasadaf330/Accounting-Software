@@ -1,48 +1,44 @@
 /**
- * THE SPINE (Guide Part V). Every tool call flows through this ONE runner; a
- * tool is structurally unable to skip a step. Sequence:
+ * THE SPINE (Hayo MCP Integration Spec). Every tool call flows through this one
+ * runner; a tool cannot skip a step. Sequence:
  *
- *   1. verify shared secret (constant-time)      → denial + audit (null user)
- *   2. extract + validate x-atlas-user-id        → denial + audit
- *   3/4. resolve user → account → ONE role       → denial + audit
- *   5. role → permissions/allow-list             → (passed to the tool body)
- *   6. execute tool body READ-ONLY (stmt timeout)→ friendly error + audit
- *   7. mask/omit + row/byte caps + truncated     → (handled by the tool/envelope)
- *   8. write audit row; ONLY THEN return         → 'unavailable' if audit fails
+ *   1. verify the Atlas JWT (signature/RS256, iss, aud, exp/nbf, jti-replay, oid)
+ *   2/3. resolve identity → local user + role (oid → email → backfill)
+ *   4. rate-limit per subject
+ *   5. execute READ-ONLY inside a txn with a statement timeout
+ *   6. return { result | error, audit } — the audit block is ALWAYS included
  *
- * Denials/errors are returned as NORMAL tool results whose text is one of the
- * three approved strings. No exception/driver/parser message ever reaches the
- * agent (Guide 5.1).
+ * Denials/errors are normal results whose JSON carries `error` + `audit`. No
+ * exception/driver/parser text ever reaches the caller.
  */
 import type { PoolClient } from 'pg';
 import { Role } from '@accounting-saas/shared';
 import { roPool } from './db/pools.js';
 import { config } from './config.js';
 import { log } from './logging.js';
-import { parseIdentity } from './http/headers.js';
-import { isValidAgentKey } from './auth/secret.js';
+import { verifyToken } from './auth/jwt.js';
 import { resolvePrincipal } from './auth/roleResolver.js';
 import { permissionsFor, type Permissions } from './permissions/mapping.js';
-import { writeAudit, type AuditRow } from './audit/audit.js';
 import { buildEnvelope } from './envelope.js';
 import { allow as rateAllow } from './rateLimit.js';
 import { GuardRejectError } from './errors.js';
-import { denialMessage, guardRejectMessage, internalErrorMessage, textResult } from './responses.js';
+import { denialMessage, errorMessage, textResult } from './responses.js';
+import { buildAuditBlock, type AuditSubject, type DenyReason, type Outcome } from './audit/block.js';
+import { writeLocalAudit } from './audit/audit.js';
 
 export interface ToolContext {
-  userId: string;
   role: Role;
   tenantId: string;
   perms: Permissions;
-  requestId: string | null;
-  /** Runs a query on the read-only connection inside the RO txn (object rows). */
+  correlationId: string;
+  /** Read-only query (object rows). Text is captured for operation.statement. */
   query: (text: string, params?: unknown[]) => Promise<{ rows: any[]; fields: { name: string }[] }>;
-  /** Same, but returns positional array rows (for the escape hatch's arbitrary columns). */
+  /** Read-only query returning positional rows (escape hatch). */
   queryArray: (text: string) => Promise<{ rows: unknown[][]; fields: { name: string }[] }>;
 }
 
 export type WorkResult =
-  | { type: 'table'; columns: string[]; rows: unknown[][]; relations: string[]; asOf?: string }
+  | { type: 'table'; columns: string[]; rows: unknown[][]; relations: string[]; asOf?: string; currency?: string }
   | { type: 'doc'; json: unknown; relations: string[] };
 
 export type Work = (ctx: ToolContext) => Promise<WorkResult>;
@@ -50,57 +46,78 @@ export type Work = (ctx: ToolContext) => Promise<WorkResult>;
 interface Extra {
   requestInfo?: { headers?: Record<string, string | string[] | undefined> };
 }
-
 type ToolResult = { content: Array<{ type: 'text'; text: string }> };
 
-export async function run(extra: Extra, tool: string, queryText: string | null, work: Work): Promise<ToolResult> {
-  const id = parseIdentity(extra?.requestInfo?.headers);
-  const reqId = id.requestId;
+function header(headers: Record<string, string | string[] | undefined> | undefined, name: string): string | undefined {
+  const v = headers?.[name] ?? headers?.[name.toLowerCase()];
+  return Array.isArray(v) ? v[0] : v;
+}
 
-  // Audit BEFORE returning. If the audit write fails, return 'unavailable' — not
-  // data — and ALERT (audit-write failure must page, not silently deny).
-  const auditAndReturn = async (row: AuditRow, text: string): Promise<ToolResult> => {
-    try {
-      await writeAudit(row);
-    } catch (e) {
-      log.alert(reqId, 'AUDIT WRITE FAILED — returning unavailable', e);
-      return textResult(internalErrorMessage(reqId));
-    }
-    return textResult(text);
+function maskedForRelations(perms: Permissions, relations: string[]): string[] {
+  const rel = new Set(relations.map((r) => r.toLowerCase()));
+  const out: string[] = [];
+  for (const key of perms.maskedColumns) {
+    const [t] = key.split('.');
+    if (rel.has(t)) out.push(key);
+  }
+  return out;
+}
+
+export async function run(extra: Extra, tool: string, work: Work): Promise<ToolResult> {
+  const start = Date.now();
+  const kind = tool.endsWith('_describe') ? 'describe' : 'sql_select';
+  const headers = extra?.requestInfo?.headers;
+
+  interface FinalizeArgs {
+    outcome: Outcome;
+    denyReason?: DenyReason | null;
+    subject: AuditSubject;
+    correlationId: string;
+    statement: string | null;
+    relations: string[];
+    rowCount: number | null;
+    columnsMasked?: string[];
+    detail?: Record<string, unknown>;
+  }
+  const finalize = async (payload: { result: unknown } | { error: string }, a: FinalizeArgs): Promise<ToolResult> => {
+    const audit = buildAuditBlock({ tool, kind, startMs: start, ...a });
+    void writeLocalAudit(audit).catch((e) => log.warn(a.correlationId, 'local audit write failed (non-fatal)', e));
+    return textResult(JSON.stringify({ ...payload, audit }));
+  };
+  const deny = (reason: DenyReason, subject: AuditSubject, correlationId: string, detail?: Record<string, unknown>) =>
+    finalize(
+      { error: denialMessage(reason) },
+      { outcome: 'denied', denyReason: reason, subject, correlationId, statement: null, relations: [], rowCount: null, detail },
+    );
+
+  // 1. Verify the Atlas token. Nothing is trusted until this passes.
+  const verified = await verifyToken(header(headers, 'authorization'));
+  if (!verified.ok) {
+    return deny(verified.reason, { oid: null, email: null, matched_by: null }, 'unknown', { check_failed: verified.reason });
+  }
+  const claims = verified.claims;
+  const correlationId = claims.correlationId;
+
+  // 2/3. Resolve to a local user + role.
+  const resolved = await resolvePrincipal(claims, correlationId);
+  if (!resolved.ok) {
+    return deny(resolved.reason, { oid: claims.oid, email: claims.email, matched_by: null }, correlationId);
+  }
+  const principal = resolved.principal;
+  const subject: AuditSubject = {
+    oid: principal.oid,
+    email: principal.email,
+    matched_by: principal.matchedBy,
+    local_user_id: principal.localUserId,
   };
 
-  const deny = (userEmail: string | null, role: string | null, reason: string) =>
-    auditAndReturn(
-      { requestId: reqId, userEmail, role, tool, queryText, relations: null, rowCount: null, outcome: 'denied', denyReason: reason },
-      denialMessage(),
-    );
+  // 4. Rate limit per subject.
+  if (!rateAllow(principal.oid)) return deny('rate_limited', subject, correlationId);
 
-  // 1. Shared secret. Duplicated identity headers = smuggling → deny (null user).
-  if (id.duplicated || !isValidAgentKey(id.agentKey)) {
-    return deny(null, null, id.duplicated ? 'duplicate identity header' : 'bad agent key');
-  }
+  const perms = permissionsFor(principal.role);
+  const executed: string[] = [];
 
-  // 2. User id present + well-formed?
-  if (!id.userId) return deny(null, null, 'no user identity');
-  const userId = id.userId;
-
-  // 3/4. Resolve to ONE role + tenant (local mirror, cached <= 60s).
-  const resolved = await resolvePrincipal(userId, reqId);
-  if (!resolved.ok) return deny(userId, null, resolved.reason);
-  const { role, tenantId } = resolved.principal;
-
-  // Per-user rate limit → fast friendly error, not a hang.
-  if (!rateAllow(userId)) {
-    return auditAndReturn(
-      { requestId: reqId, userEmail: userId, role, tool, queryText, relations: null, rowCount: null, outcome: 'error', denyReason: 'rate limit' },
-      internalErrorMessage(reqId),
-    );
-  }
-
-  // 5. Permissions/allow-list for this call.
-  const perms = permissionsFor(role);
-
-  // 6. Execute READ-ONLY with a statement timeout. Everything below stays server-side.
+  // 5. Execute READ-ONLY with a statement timeout.
   let result: WorkResult;
   let client: PoolClient | undefined;
   try {
@@ -109,48 +126,56 @@ export async function run(extra: Extra, tool: string, queryText: string | null, 
     await client.query('SET TRANSACTION READ ONLY');
     await client.query(`SET LOCAL statement_timeout = ${Number(config.statementTimeoutMs)}`);
     const ctx: ToolContext = {
-      userId,
-      role,
-      tenantId,
+      role: principal.role,
+      tenantId: principal.tenantId,
       perms,
-      requestId: reqId,
-      query: (text, params) => client!.query(text, params) as Promise<{ rows: any[]; fields: { name: string }[] }>,
-      queryArray: (text) => client!.query({ text, rowMode: 'array' }) as Promise<{ rows: unknown[][]; fields: { name: string }[] }>,
+      correlationId,
+      query: (text, params) => {
+        executed.push(text);
+        return client!.query(text, params) as Promise<{ rows: any[]; fields: { name: string }[] }>;
+      },
+      queryArray: (text) => {
+        executed.push(text);
+        return client!.query({ text, rowMode: 'array' }) as Promise<{ rows: unknown[][]; fields: { name: string }[] }>;
+      },
     };
     result = await work(ctx);
     await client.query('COMMIT');
   } catch (e) {
     if (client) await client.query('ROLLBACK').catch(() => undefined);
-    // Guard rejections are an expected ACL outcome, not an internal error.
+    const statement = executed.length ? executed.join(';\n') : null;
     if (e instanceof GuardRejectError) {
-      return auditAndReturn(
-        { requestId: reqId, userEmail: userId, role, tool, queryText, relations: null, rowCount: null, outcome: 'denied', denyReason: `guard: ${e.reason}` },
-        guardRejectMessage(),
+      return finalize(
+        { error: denialMessage('not_allowed_operation') },
+        { outcome: 'denied', denyReason: 'not_allowed_operation', subject, correlationId, statement, relations: [], rowCount: null, detail: { reason: e.reason, role: principal.role } },
       );
     }
-    log.error(reqId, `tool ${tool} failed`, e); // full detail (incl. any driver/SQL text) stays HERE
-    return auditAndReturn(
-      { requestId: reqId, userEmail: userId, role, tool, queryText, relations: null, rowCount: null, outcome: 'error', denyReason: 'internal' },
-      internalErrorMessage(reqId),
+    log.error(correlationId, `tool ${tool} failed`, e); // full detail stays server-side
+    return finalize(
+      { error: errorMessage() },
+      { outcome: 'error', subject, correlationId, statement, relations: [], rowCount: null, detail: { role: principal.role } },
     );
   } finally {
     if (client) client.release();
   }
 
-  // 7 + 8. Shape output, then audit BEFORE returning.
+  // 6. Shape result + always return the audit block.
+  const statement = executed.length ? executed.join(';\n') : null;
+  const columnsMasked = maskedForRelations(perms, result.relations);
   if (result.type === 'doc') {
-    return auditAndReturn(
-      { requestId: reqId, userEmail: userId, role, tool, queryText, relations: result.relations, rowCount: null, outcome: 'ok', denyReason: null },
-      JSON.stringify(result.json),
+    return finalize(
+      { result: result.json },
+      { outcome: 'ok', subject, correlationId, statement, relations: result.relations, rowCount: null, columnsMasked, detail: { role: principal.role, matched_by: principal.matchedBy } },
     );
   }
-  const { text, envelope } = buildEnvelope(result.columns, result.rows, {
+  const { envelope } = buildEnvelope(result.columns, result.rows, {
     rowCap: config.rowCap,
     byteCap: config.byteCap,
     asOf: result.asOf,
+    currency: result.currency,
   });
-  return auditAndReturn(
-    { requestId: reqId, userEmail: userId, role, tool, queryText, relations: result.relations, rowCount: envelope.row_count, outcome: 'ok', denyReason: null },
-    text,
+  return finalize(
+    { result: envelope },
+    { outcome: 'ok', subject, correlationId, statement, relations: result.relations, rowCount: envelope.row_count, columnsMasked, detail: { role: principal.role, matched_by: principal.matchedBy } },
   );
 }

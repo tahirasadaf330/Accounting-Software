@@ -1,58 +1,112 @@
 /**
- * Tiny MCP client for driving the connector by hand WITHOUT Atlas (Guide 8.2).
- * Sets the two identity headers and runs initialize -> tools/list -> tools/call.
+ * Tiny MCP client that MINTS an Atlas-style RS256 token per call (Spec §3) using
+ * the dev private key, then drives the connector. This stands in for Atlas
+ * locally — a static Bearer header can't be reused (jti replay), so we sign fresh.
  *
- *   pnpm --filter mcp smoke                         # OWNER (default user), accounting_describe
- *   pnpm --filter mcp smoke ali@hayo.net            # a different user
- *   pnpm --filter mcp smoke --bad-secret            # wrong agent key -> denial
- *   pnpm --filter mcp smoke --no-user               # missing user id -> denial
- *   pnpm --filter mcp smoke ali@hayo.net --tool accounting_describe --args {}
+ *   pnpm --filter mcp gen:keys      # once — creates dev-keys/
+ *   pnpm --filter mcp smoke                         # OWNER (default user), describe
+ *   pnpm --filter mcp smoke ali@hayo.net --tool accounting_ar_aging --args {}
+ *   pnpm --filter mcp smoke --no-user               # no token       -> bad_token
+ *   pnpm --filter mcp smoke --bad-sig               # wrong key      -> bad_token
+ *   pnpm --filter mcp smoke --expired               # expired token  -> token_expired
+ *   pnpm --filter mcp smoke --wrong-aud             # other MCP's aud-> bad_token
+ *   pnpm --filter mcp smoke --replay                # reuse a token  -> token_replayed
  */
 import 'dotenv/config';
+import { readFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-function getFlagValue(args: string[], flag: string): string | undefined {
+interface MintOpts {
+  badSig?: boolean;
+  expired?: boolean;
+  wrongAud?: boolean;
+}
+
+function oidFor(email: string): string {
+  const h = createHash('sha256').update(email.toLowerCase()).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
+async function mintToken(email: string, opts: MintOpts = {}): Promise<string> {
+  const jose = await import('jose');
+  const privJwk = JSON.parse(readFileSync('dev-keys/private.jwk.json', 'utf8'));
+  let key = await jose.importJWK(privJwk, 'RS256');
+  let kid = privJwk.kid ?? 'dev-1';
+  if (opts.badSig) {
+    const kp = await jose.generateKeyPair('RS256', { extractable: true });
+    key = kp.privateKey; // sign with an unknown key → signature fails
+    kid = 'dev-1';
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const aud = opts.wrongAud ? 'some-other-mcp' : process.env.ATLAS_JWT_AUD || 'accounting-mcp-dev';
+  return new jose.SignJWT({ oid: oidFor(email), email, name: 'Smoke Tester', correlation_id: 'smoke-' + randomUUID().slice(0, 8) })
+    .setProtectedHeader({ alg: 'RS256', kid })
+    .setIssuer(process.env.ATLAS_JWT_ISS || 'atlas')
+    .setAudience(aud)
+    .setJti(randomUUID())
+    .setIssuedAt(opts.expired ? now - 600 : now)
+    .setNotBefore(opts.expired ? now - 600 : now)
+    .setExpirationTime(opts.expired ? now - 300 : now + 120)
+    .sign(key);
+}
+
+function flagValue(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);
   return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
+}
+
+async function callOnce(target: string, token: string | null, tool: string, toolArgs: unknown): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (token) headers.authorization = `Bearer ${token}`;
+  const transport = new StreamableHTTPClientTransport(new URL(target), { requestInit: { headers } });
+  const client = new Client({ name: 'acct-smoke', version: '0.0.0' });
+  await client.connect(transport);
+  try {
+    const res = (await client.callTool({ name: tool, arguments: toolArgs as Record<string, unknown> })) as {
+      content?: Array<{ text?: string }>;
+    };
+    return (res.content ?? []).map((c) => c.text ?? '').join('\n');
+  } finally {
+    await client.close();
+  }
 }
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const target = process.env.MCP_URL || 'http://127.0.0.1:7801/mcp';
-  const secret = process.env.ATLAS_MCP_SECRET || '';
-  const badSecret = args.includes('--bad-secret');
-  const noUser = args.includes('--no-user');
   const user = args.find((a) => a.includes('@')) || 'tahira.sadaf@kingrevolution.com';
-  const tool = getFlagValue(args, '--tool') || 'accounting_describe';
-  const toolArgs = JSON.parse(getFlagValue(args, '--args') || '{}');
+  const tool = flagValue(args, '--tool') || 'accounting_describe';
+  const toolArgs = JSON.parse(flagValue(args, '--args') || '{}');
+  const noUser = args.includes('--no-user');
+  const opts: MintOpts = { badSig: args.includes('--bad-sig'), expired: args.includes('--expired'), wrongAud: args.includes('--wrong-aud') };
+  const replay = args.includes('--replay');
 
-  const headers: Record<string, string> = {
-    'x-atlas-agent-key': badSecret ? 'definitely-the-wrong-secret-value-0000000000' : secret,
-    'x-atlas-request-id': 'smoke-' + Math.random().toString(36).slice(2, 10),
-  };
-  if (!noUser) headers['x-atlas-user-id'] = user;
+  console.log('── scenario:', JSON.stringify({ user: noUser ? '(no token)' : user, tool, ...opts, replay }));
 
-  const transport = new StreamableHTTPClientTransport(new URL(target), { requestInit: { headers } });
-  const client = new Client({ name: 'accounting-smoke', version: '0.0.0' });
-  await client.connect(transport);
+  const token = noUser ? null : await mintToken(user, opts);
+  const text = await callOnce(target, token, tool, toolArgs);
+  printResponse(tool, text);
 
-  console.log('── scenario:', JSON.stringify({ user: noUser ? '(none)' : user, badSecret, tool }));
-  const tools = await client.listTools();
-  console.log('tools/list:', tools.tools.map((t) => t.name).join(', '));
-
-  const res = (await client.callTool({ name: tool, arguments: toolArgs })) as {
-    content?: Array<{ type: string; text?: string }>;
-  };
-  const text = (res.content ?? []).map((c) => c.text ?? '').join('\n');
-  console.log(`${tool} ->`);
-  try {
-    console.log(JSON.stringify(JSON.parse(text), null, 2));
-  } catch {
-    console.log(text);
+  if (replay && token) {
+    console.log('\n── replaying the SAME token …');
+    printResponse(tool, await callOnce(target, token, tool, toolArgs));
   }
+}
 
-  await client.close();
+function printResponse(tool: string, text: string): void {
+  let parsed: { result?: unknown; error?: string; audit?: { outcome?: string; deny_reason?: string | null } };
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    console.log(`${tool} -> (non-JSON)`, text);
+    return;
+  }
+  const a = parsed.audit;
+  console.log(`${tool} -> outcome=${a?.outcome} deny_reason=${a?.deny_reason ?? '-'}`);
+  if (parsed.error) console.log('  error:', parsed.error);
+  if (parsed.result !== undefined) console.log('  result:', JSON.stringify(parsed.result).slice(0, 600));
 }
 
 main().catch((e) => {

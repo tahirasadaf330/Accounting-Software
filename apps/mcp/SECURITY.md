@@ -1,75 +1,83 @@
 # Security & conformance map — `accounting` MCP connector
 
-Maps each *Atlas MCP Builder's Guide* conformance item (Part XI) to where it is
-enforced in this codebase and how it is tested.
+Maps the **Hayo MCP Integration Specification** to where each item is enforced in
+this codebase and how it is tested. (The connector also follows the Atlas MCP
+Builder's Guide for tool/guard design; where the two differ on identity, audit or
+transport, this Integration Spec governs.)
 
-## Conformance checklist (Part XI.1)
+## §2 Transport — TLS
 
-| # | Guide requirement | Enforced in | Test |
-|---|---|---|---|
-| 1 | No/wrong/duplicated secret & missing user id → generic denial | `auth/secret.ts` (constant-time), `http/headers.ts` (dup detection), `runner.ts` steps 1–2 | `auth.test.ts`, `integration.test.ts` (wrong secret, missing user) |
-| 2 | Unknown / inactive / role-less / **multi-role** / no-tenant → ONE generic denial | `auth/roleResolver.ts`, `runner.ts` steps 3–4 | `integration.test.ts` (unknown user); resolver denies inactive/ambiguous/no-tenant |
-| 3 | `describe` shows ONLY the caller's datasets | `tools/describe.ts` + `permissions/mapping.ts` | `integration.test.ts` (OWNER=6, PAYMENT_OFFICER=3) |
-| 4 | Escape hatch rejects the full attack corpus (catalogs, write-CTEs, masked cols, out-of-role joins…) | `tools/sqlGuard.ts` | `sqlGuard.test.ts` (20+ cases), `integration.test.ts` |
-| 5 | Masked columns never appear for a restricted role | `permissions/mapping.ts` (`ROLE_MASKED`), curated tools omit; `sqlGuard.ts` rejects | `sqlGuard.test.ts` (masked col + `SELECT *`), curated `requireUnmasked` |
-| 6 | Every call → exactly one audit row, written **before** the response; probes included | `runner.ts` (`auditAndReturn`), `audit/audit.ts` | `integration.test.ts` (row count + bad-secret probe) |
-| 7 | Role change/revocation effective within 60 s | `auth/roleResolver.ts` cache TTL `ROLE_CACHE_TTL_MS` (≤ 60 s), denials cached too | config `roleCacheTtlMs` |
-| 8 | The MCP DB account cannot write (verified at the DB) | `scripts/db-hardening.sql` (SELECT-only role, `default_transaction_read_only`) | `scripts/setup-local-db.ts` self-test (9 checks) |
-| 9 | `describe` freshness/content matches reality | `tools/describe.ts` (columns from `information_schema`, live `last_refresh`) | manual / `accounting_data_freshness` |
-| 10 | Caps + timeouts fire; overload → fast friendly error | `envelope.ts` (row+byte caps), `runner.ts` (`SET LOCAL statement_timeout`), `rateLimit.ts`, `http/server.ts` (body cap) | row cap in `sqlGuard` + envelope |
+| Requirement | Status | Notes |
+|---|---|---|
+| HTTPS only; no reachable `http://` listener | ⚙️ infra | Server binds `127.0.0.1` (internal). TLS is terminated at **Nginx** in front of the port in staging/prod (allowlist Atlas IPs). Local dev uses loopback http only. |
+| Timeouts, body-size limit, per-caller rate limit | ✅ | `http/server.ts` (64 KB body cap), `runner.ts` (statement timeout), `rateLimit.ts` (per-oid). |
 
-## Ground rules (Part III)
+## §3 Identity — the Atlas-signed JWT
 
-- **Read-only, physically.** Dedicated `atlas_mcp` role: per-table `GRANT SELECT`
-  only (union of allow-listed tables), **column-scoped** grant on `users`
-  (identity columns only — never `passwordHash`/`mfaSecret`), no grants on the
-  audit table, `default_transaction_read_only = on`, `statement_timeout`,
-  no SUPERUSER/CREATE*. See `scripts/db-hardening.sql`.
-- **Identity out-of-band.** Headers only; never a tool argument. Secret compared
-  with `timingSafeEqual`; OLD+NEW accepted during rotation; duplicated identity
-  headers rejected.
-- **Deny by default / fail-closed.** Unknown user, no/❯1 role, inactive, no
-  tenant, resolver error, parse doubt → the one generic denial. Resolver errors
-  are never cached.
-- **Audit every call before returning.** Append-only `mcp_audit_log`, written by a
-  separate `INSERT`-only account. If the audit write fails, the caller returns
-  "unavailable" (not data) and the failure is logged at ALERT level.
-- **Only the three approved strings** ever reach the agent (`responses.ts`); full
-  detail (driver/SQL/parser messages, stack traces) stays server-side, keyed by
-  request id (`logging.ts`).
+| Requirement | Enforced in | Test |
+|---|---|---|
+| Identity ONLY in the verified token — never a header/param/arg | `runner.ts` reads `Authorization: Bearer`; no user header exists | `auth.test.ts`, `integration.test.ts` (no token → bad_token) |
+| Verify signature, **RS256 only** (reject `none`/HS256) | `auth/jwt.ts` (`algorithms:['RS256']`) | `auth.test.ts` (HS256 rejected) |
+| `iss === "atlas"`, `aud ===` our id | `auth/jwt.ts` | `auth.test.ts` (wrong iss/aud → bad_token) |
+| `exp`/`nbf` with ~60s leeway | `auth/jwt.ts` (`clockTolerance`) | `auth.test.ts` (expired → token_expired) |
+| `jti` replay rejected | `auth/jwt.ts` (in-memory cache, TTL≈token life) | `auth.test.ts`, smoke `--replay` |
+| `oid` present | `auth/jwt.ts` | `auth.test.ts` (missing oid → bad_token) |
+| Public key via **JWKS**, cached, re-fetch on unknown `kid` | `auth/jwt.ts` (`createRemoteJWKSet`; local JWKS file for dev) | — |
 
-## Tenant isolation
+## §3.4 Matching — oid → email → write-once backfill
 
-The app is multi-tenant. Each caller resolves to exactly one `tenantId`
-(`auth/roleResolver.ts`). Curated tools filter every query by `tenantId`. The
-escape hatch parses the SQL and **injects `<alias>."tenantId" = '<caller tenant>'`
-onto every tenant-scoped base table** (`sqlGuard.ts`), so an ad-hoc SELECT — even
-across joins, subqueries and CTEs — cannot cross tenants. Global tables without a
-`tenantId` (e.g. `currencies`) are exempted.
+| Requirement | Enforced in | Test |
+|---|---|---|
+| `oid` column on users: nullable, UNIQUE | migration `20260804000000_add_user_oid` | — |
+| Match by `oid`, else email (case-insensitive, trimmed) | `auth/roleResolver.ts` | db:setup + integration |
+| Backfill `oid` only when empty, after active check, on exact email match; never overwrite | `roleResolver.ts` via **narrow** `atlas_mcp_oid` (UPDATE(oid) only) | live-verified (backfill writes once) |
+| No auto-create; no email-domain filter; ambiguous/inactive → deny | `roleResolver.ts` (deny `no_account`/`ambiguous_account`) | — |
 
-## SQL guard (escape hatch) — reject list
+## §3.5–3.6 Authorization & errors
 
-Parsed with `pgsql-ast-parser` (Postgres grammar); the full tree is walked,
-fail-closed. Rejected: multiple statements; any non-SELECT top level; INSERT/
-UPDATE/DELETE/DDL anywhere (incl. data-modifying CTEs); `SELECT … INTO`;
-`FOR UPDATE/SHARE`; `EXPLAIN ANALYZE`; system catalogs (`pg_catalog`,
-`information_schema`); denied functions (`pg_sleep`, `dblink*`, file/large-object
-access, `set_config`, `setval`/`nextval`, admin/signal, `*_to_xml`); caller bind
-parameters; masked-column references; any relation outside the caller's
-allow-list; and any parse error or unrecognised construct.
+| Requirement | Enforced in |
+|---|---|
+| Permissions from OUR DB every request; scope enforced IN the query | `roleResolver.ts` + `permissions/mapping.ts` + tenant-predicate injection (`sqlGuard.ts`) |
+| Never accept a role/permission/admin claim from the caller | Only `oid`/`email` are read from the token; role comes from the DB |
+| Mask sensitive columns unconditionally | `mapping.ts` (curated tools omit; escape hatch rejects) |
+| Statement timeout, row cap, date-filter on large tables | `runner.ts`, `envelope.ts`, `sqlGuard.ts` |
+| One generic denial; never reveal which check failed | `responses.ts` |
 
-## Prompt-injection-via-data (Part 7.4)
+## §4 Audit block — returned on EVERY response
 
-Results are returned as structured JSON (never blended into narration). Free-text
-cells are sanitised in `envelope.ts` (control characters stripped, length capped)
-before reaching the agent. `describe`/primer text is treated as code — changes get
-code review.
+| Requirement | Enforced in | Test |
+|---|---|---|
+| `{ result \| error, audit }` on ok, denied AND error | `runner.ts` (`finalize`) | `integration.test.ts` |
+| Fixed schema + outcome values (`ok`/`denied`/`error`) | `audit/block.ts` | live-verified full block |
+| `subject.oid/email/matched_by/local_user_id`, `correlation_id` echoed | `runner.ts` | integration |
+| `operation.statement` = what ACTUALLY ran (after rewrite/scoping), secrets scrubbed, ≤4000 chars | `runner.ts` captures executed SQL; `block.ts` scrubs/caps | integration (statement shows injected `tenantId`) |
+| `relations_touched` (≤50), `row_count`, `columns_masked`, `duration_ms`, UTC `server_time` | `runner.ts` + `block.ts` | live-verified |
+| Atlas is the single logger (we don't write an Atlas DB) | We RETURN the block; a local `mcp_audit_log` copy is optional/best-effort | — |
 
-## Known scoping decisions
+## §5 What the MCP must NOT do
 
-- Tenant isolation uses **explicit `WHERE tenantId` + parse-tree injection**
-  (per project choice), not Postgres RLS. RLS remains available as a future
-  defense-in-depth backstop.
-- Curated AR/AP aging are **invoice-based (gross of netting)**; statements and
-  top-contacts are **ledger-based** (true net). Netting-adjusted/hierarchical
-  views remain in the app UI. Documented in `describe.reading_notes`.
+No charts/images; no pre-formatted numbers (raw numbers + `currency` field, `envelope.ts`/`curated.ts`); identity only from the token; no Atlas-DB credentials; no auto-create/guest fallback; no trusting caller permissions; no raw internal errors (`responses.ts`); no plain HTTP in prod.
+
+## §6 Data quality
+
+Stable column names + order; numbers as numbers, dates ISO-8601, booleans as booleans; unit/currency as their own field; freshness via `describe.last_refresh` + `accounting_data_freshness`; bounded results with `truncated`; tool descriptions for the model.
+
+## Physical read-only + the narrow identity writer
+
+- `atlas_mcp`: `SELECT` only on allow-listed tables + **column-scoped** grant on
+  `users` (identity columns incl. `oid`; never `passwordHash`/`mfaSecret`),
+  `default_transaction_read_only`, no writes anywhere. (`db-hardening.sql`)
+- `atlas_mcp_oid`: the ONLY write account — `UPDATE(oid) ON users` and nothing
+  else (verified: cannot read secrets, cannot update other columns, cannot read
+  data tables). Data path stays 100% read-only.
+- `atlas_mcp_audit`: `INSERT`-only on the optional local `mcp_audit_log`.
+
+`scripts/setup-local-db.ts` self-tests all of the above (14 checks).
+
+## §7 Go-live checklist (what still needs the Atlas team)
+
+- HTTPS with a valid cert; firewall to Atlas IPs; no reachable http.
+- `ATLAS_JWKS_URL` (Atlas keys endpoint) and `ATLAS_JWT_AUD` (your id) provided by Atlas.
+- Server clock on NTP.
+- Then: valid user gets their data; no-entitlement denied; unknown denied;
+  expired/tampered/other-MCP tokens rejected (all covered by the test suite).

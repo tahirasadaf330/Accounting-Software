@@ -1,14 +1,15 @@
 /**
- * Tier 2 — curated tools (Guide 6.2). Each is a thin closure over the Part-V
- * runner. Parameters are ENUMS/scalars mapped server-side to real columns;
- * callers never pass table or column names. Every query is tenant-scoped
- * (WHERE "tenantId" = $1) and passes through requireTables() for the allow-list.
- * Monetary values stay decimal strings (numeric) — never floats.
+ * Tier 2 — curated tools. Each is a thin closure over the Part-V runner. ENUM/
+ * scalar params mapped server-side to real columns; callers never pass table or
+ * column names. Every query is tenant-scoped (WHERE "tenantId" = $1) and passes
+ * through requireTables() for the allow-list. Monetary values are raw NUMBERS
+ * with a separate `currency` field (Spec §6) — never strings, never formatted.
  */
 import type { ToolContext, WorkResult } from '../runner.js';
 import { clampInt, parseDate, requireTables, requireUnmasked, datasetFreshness } from './shared.js';
 
 type Args = Record<string, unknown>;
+const CURRENCY = 'USD'; // tenant base currency
 const asOfStamp = (d: string): string => `${d}T00:00:00Z`;
 
 // ── Aging (invoice-based, gross of netting) ──────────────────────────────────
@@ -40,18 +41,17 @@ async function aging(ctx: ToolContext, args: Args, voucherType: 'SALES' | 'PURCH
            WHEN days_overdue <= 90 THEN '61-90'
            ELSE '91+' END AS bucket,
       count(*)::int AS invoices,
-      round(sum(outstanding), 4)::text AS outstanding_usd
-    FROM inv
-    WHERE outstanding > 0
-    GROUP BY 1
-    ORDER BY min(days_overdue)`;
+      round(sum(outstanding), 2) AS outstanding
+    FROM inv WHERE outstanding > 0
+    GROUP BY 1 ORDER BY min(days_overdue)`;
   const { rows } = await ctx.query(sql, params);
   return {
     type: 'table',
-    columns: ['bucket', 'invoices', 'outstanding_usd'],
-    rows: rows.map((r) => [r.bucket, r.invoices, r.outstanding_usd]),
+    columns: ['bucket', 'invoices', 'outstanding'],
+    rows: rows.map((r) => [r.bucket, r.invoices, r.outstanding]),
     relations: ['vouchers', 'payment_allocations', 'contacts'],
     asOf: asOfStamp(asOf),
+    currency: CURRENCY,
   };
 }
 
@@ -68,7 +68,7 @@ export async function topContacts(ctx: ToolContext, args: Args): Promise<WorkRes
   const dir = metric === 'receivable' ? 'DESC' : 'ASC';
   const sql = `
     SELECT ct.name AS contact,
-           round(abs(sum(jl."baseCurrencyDebit" - jl."baseCurrencyCredit")), 4)::text AS amount_usd
+           round(abs(sum(jl."baseCurrencyDebit" - jl."baseCurrencyCredit")), 2) AS amount
     FROM contacts ct
     JOIN accounts a ON a.id = ct."accountId"
     JOIN journal_entry_lines jl ON jl."accountId" = a.id AND jl."tenantId" = $1
@@ -79,13 +79,14 @@ export async function topContacts(ctx: ToolContext, args: Args): Promise<WorkRes
     ORDER BY sum(jl."baseCurrencyDebit" - jl."baseCurrencyCredit") ${dir}
     LIMIT ${n}`;
   const { rows } = await ctx.query(sql, [ctx.tenantId, asOf]);
-  const col = metric === 'receivable' ? 'receivable_usd' : 'payable_usd';
+  const col = metric === 'receivable' ? 'receivable' : 'payable';
   return {
     type: 'table',
     columns: ['contact', col],
-    rows: rows.map((r) => [r.contact, r.amount_usd]),
+    rows: rows.map((r) => [r.contact, r.amount]),
     relations: ['contacts', 'accounts', 'journal_entry_lines'],
     asOf: asOfStamp(asOf),
+    currency: CURRENCY,
   };
 }
 
@@ -109,10 +110,9 @@ export async function contactStatement(ctx: ToolContext, args: Args): Promise<Wo
   if (matches.length === 0) matches = await find(`%${q}%`, true);
 
   if (matches.length === 0) {
-    return { type: 'table', columns: ['date', 'voucher', 'narration', 'debit', 'credit', 'balance', 'nature'], rows: [], relations: rels };
+    return { type: 'table', columns: ['date', 'voucher', 'narration', 'debit', 'credit', 'balance', 'nature'], rows: [], relations: rels, currency: CURRENCY };
   }
   if (matches.length > 1) {
-    // Disambiguation: return the candidate names so the caller can refine.
     return { type: 'table', columns: ['matched_contact'], rows: matches.slice(0, 25).map((m) => [m.name]), relations: ['contacts'] };
   }
 
@@ -127,9 +127,7 @@ export async function contactStatement(ctx: ToolContext, args: Args): Promise<Wo
       WHERE jl."tenantId" = $1 AND jl."accountId" = $2 AND je."entryDate" < $3::date`,
     [ctx.tenantId, contact.acct, from],
   );
-  const openingDr = Number(open.rows[0].dr);
-  const openingCr = Number(open.rows[0].cr);
-  const opening = isDebitNormal ? openingDr - openingCr : openingCr - openingDr;
+  const opening = (isDebitNormal ? open.rows[0].dr - open.rows[0].cr : open.rows[0].cr - open.rows[0].dr) as number;
 
   const period = await ctx.query(
     `WITH lines AS (
@@ -142,20 +140,19 @@ export async function contactStatement(ctx: ToolContext, args: Args): Promise<Wo
         WHERE jl."tenantId" = $1 AND jl."accountId" = $2
           AND je."entryDate" >= $3::date AND je."entryDate" <= $4::date
      )
-     SELECT to_char(d, 'YYYY-MM-DD') AS date, vn, narr, dr::text, cr::text,
+     SELECT to_char(d, 'YYYY-MM-DD') AS date, vn, narr, dr, cr,
             ($5::numeric + sum(CASE WHEN $6::bool THEN dr - cr ELSE cr - dr END)
               OVER (ORDER BY d, cat ROWS UNBOUNDED PRECEDING)) AS signed_balance
        FROM lines ORDER BY d, cat`,
-    [ctx.tenantId, contact.acct, from, to, opening.toFixed(4), isDebitNormal],
+    [ctx.tenantId, contact.acct, from, to, opening, isDebitNormal],
   );
 
-  const nature = (signed: number): string => (Math.abs(signed) < 0.00005 ? 'Settled' : signed > 0 ? 'Receivable' : 'Payable');
-  const rows: unknown[][] = [
-    ['(opening)', '', `Opening balance as of ${from}`, '', '', Math.abs(opening).toFixed(4), nature(opening)],
-  ];
-  for (const r of period.rows as Array<Record<string, string>>) {
-    const signed = Number(r.signed_balance);
-    rows.push([r.date, r.vn ?? '', r.narr ?? '', r.dr, r.cr, Math.abs(signed).toFixed(4), nature(signed)]);
+  const round2 = (n: number): number => Math.round(n * 100) / 100;
+  const nature = (signed: number): string => (Math.abs(signed) < 0.005 ? 'Settled' : signed > 0 ? 'Receivable' : 'Payable');
+  const rows: unknown[][] = [['(opening)', '', `Opening balance as of ${from}`, null, null, round2(Math.abs(opening)), nature(opening)]];
+  for (const r of period.rows as Array<{ date: string; vn: string | null; narr: string | null; dr: number; cr: number; signed_balance: number }>) {
+    const signed = r.signed_balance;
+    rows.push([r.date, r.vn ?? '', r.narr ?? '', round2(r.dr), round2(r.cr), round2(Math.abs(signed)), nature(signed)]);
   }
   return {
     type: 'table',
@@ -163,6 +160,7 @@ export async function contactStatement(ctx: ToolContext, args: Args): Promise<Wo
     rows,
     relations: rels,
     asOf: asOfStamp(to),
+    currency: CURRENCY,
   };
 }
 
@@ -182,16 +180,17 @@ export async function voucherSummary(ctx: ToolContext, args: Args): Promise<Work
   }
   const sql = `
     SELECT "voucherType" AS voucher_type, status,
-           count(*)::int AS count, round(sum("totalAmount"), 4)::text AS total_usd
+           count(*)::int AS count, round(sum("totalAmount"), 2) AS total
     FROM vouchers
     WHERE "tenantId" = $1 AND date >= (CURRENT_DATE - ${days})${filter}
     GROUP BY 1, 2 ORDER BY 1, 2`;
   const { rows } = await ctx.query(sql, params);
   return {
     type: 'table',
-    columns: ['voucher_type', 'status', 'count', 'total_usd'],
-    rows: rows.map((r) => [r.voucher_type, r.status, r.count, r.total_usd]),
+    columns: ['voucher_type', 'status', 'count', 'total'],
+    rows: rows.map((r) => [r.voucher_type, r.status, r.count, r.total]),
     relations: ['vouchers'],
+    currency: CURRENCY,
   };
 }
 
@@ -210,18 +209,19 @@ export async function creditLimitStatus(ctx: ToolContext, args: Args): Promise<W
       WHERE ct."tenantId" = $1 AND ct."creditLimit" IS NOT NULL AND ct."creditLimit" > 0
       GROUP BY ct.id, ct.name, ct."creditLimit"
     )
-    SELECT name AS contact, round(lim, 4)::text AS credit_limit_usd,
-           round(greatest(net, 0), 4)::text AS receivable_usd,
-           round(greatest(net, 0) / lim * 100, 1)::text AS utilization_pct
+    SELECT name AS contact, round(lim, 2) AS credit_limit,
+           round(greatest(net, 0), 2) AS receivable,
+           round(greatest(net, 0) / lim * 100, 1) AS utilization_pct
     FROM bal
     WHERE greatest(net, 0) / lim * 100 >= ${threshold}
     ORDER BY greatest(net, 0) / lim DESC`;
   const { rows } = await ctx.query(sql, [ctx.tenantId]);
   return {
     type: 'table',
-    columns: ['contact', 'credit_limit_usd', 'receivable_usd', 'utilization_pct'],
-    rows: rows.map((r) => [r.contact, r.credit_limit_usd, r.receivable_usd, r.utilization_pct]),
+    columns: ['contact', 'credit_limit', 'receivable', 'utilization_pct'],
+    rows: rows.map((r) => [r.contact, r.credit_limit, r.receivable, r.utilization_pct]),
     relations: ['contacts', 'accounts', 'journal_entry_lines'],
+    currency: CURRENCY,
   };
 }
 
@@ -257,8 +257,8 @@ export async function trialBalance(ctx: ToolContext, args: Args): Promise<WorkRe
   const asOf = parseDate(args.as_of);
   const sql = `
     SELECT a.code AS account_code, a.name AS account_name, a."accountType" AS account_type,
-           round(CASE WHEN net > 0 THEN net ELSE 0 END, 4)::text AS debit_usd,
-           round(CASE WHEN net < 0 THEN -net ELSE 0 END, 4)::text AS credit_usd
+           round(CASE WHEN net > 0 THEN net ELSE 0 END, 2) AS debit,
+           round(CASE WHEN net < 0 THEN -net ELSE 0 END, 2) AS credit
     FROM (
       SELECT jl."accountId",
              sum(jl."baseCurrencyDebit") - sum(jl."baseCurrencyCredit") AS net
@@ -272,10 +272,11 @@ export async function trialBalance(ctx: ToolContext, args: Args): Promise<WorkRe
   const { rows } = await ctx.query(sql, [ctx.tenantId, asOf]);
   return {
     type: 'table',
-    columns: ['account_code', 'account_name', 'account_type', 'debit_usd', 'credit_usd'],
-    rows: rows.map((r) => [r.account_code, r.account_name, r.account_type, r.debit_usd, r.credit_usd]),
+    columns: ['account_code', 'account_name', 'account_type', 'debit', 'credit'],
+    rows: rows.map((r) => [r.account_code, r.account_name, r.account_type, r.debit, r.credit]),
     relations: ['accounts', 'journal_entry_lines'],
     asOf: asOfStamp(asOf),
+    currency: CURRENCY,
   };
 }
 
@@ -283,7 +284,7 @@ export async function trialBalance(ctx: ToolContext, args: Args): Promise<WorkRe
 export async function dataFreshness(ctx: ToolContext, _args: Args): Promise<WorkResult> {
   const rows: unknown[][] = [];
   for (const d of ctx.perms.datasets) {
-    rows.push([d.name, (await datasetFreshness(ctx, d.name)) ?? 'n/a']);
+    rows.push([d.name, (await datasetFreshness(ctx, d.name)) ?? null]);
   }
   return {
     type: 'table',
