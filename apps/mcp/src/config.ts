@@ -72,6 +72,14 @@ export const config: AppConfig = {
   roleCacheTtlMs: int('ROLE_CACHE_TTL_MS', 60_000),
 };
 
+/**
+ * Timezone the read path is pinned to on every query (the runner issues
+ * `SET LOCAL TIME ZONE`), and reported in the audit block's `timezone` field so
+ * Atlas can see which zone date filters/aging resolved in. Atlas standardised on
+ * UTC; we pin it explicitly rather than inheriting the server/DB default.
+ */
+export const SESSION_TIME_ZONE = 'UTC';
+
 /** Fail-closed startup validation. Exits the process on misconfiguration. */
 export function validateConfigOrExit(): void {
   const problems: string[] = [];

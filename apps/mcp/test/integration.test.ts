@@ -91,6 +91,7 @@ test('describe: OWNER → 6 datasets; audit in structuredContent', async (t) => 
   assert.equal(r.audit.subject.email, OWNER);
   assert.ok(r.audit.subject.oid);
   assert.ok(r.audit.server_time.endsWith('Z'));
+  assert.equal(r.audit.timezone, 'UTC');
 });
 
 test('describe: PAYMENT_OFFICER → 3 datasets', async (t) => {
@@ -107,12 +108,14 @@ test('no token → denied/bad_token as a NORMAL result (data null, audit present
   assert.equal(r.audit.deny_reason, 'bad_token');
   assert.equal(r.audit.subject.oid, null);
   assert.match(r.text, /Access denied/);
+  assert.match(r.text, /bad_token/);
 });
 
 test('expired token → token_expired', async (t) => {
   if (!up) return t.skip();
   const r = await call(await mint(OWNER, { expired: true }), 'accounting_describe', {});
   assert.equal(r.audit.deny_reason, 'token_expired');
+  assert.match(r.text, /token_expired/);
 });
 
 test('wrong audience → bad_token', async (t) => {

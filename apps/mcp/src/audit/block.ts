@@ -3,7 +3,7 @@
  * §4). Atlas stores it. Field names / outcome values are FIXED — Atlas parses
  * these into one shared table across every MCP, so they must match exactly.
  */
-import { config } from '../config.js';
+import { config, SESSION_TIME_ZONE } from '../config.js';
 
 export type Outcome = 'ok' | 'denied' | 'error';
 
@@ -38,6 +38,7 @@ export interface AuditBlock {
   columns_masked?: string[];
   duration_ms: number;
   server_time: string;
+  timezone: string; // zone the DB session (and thus date filters/aging) resolved in
   detail?: Record<string, unknown>;
 }
 
@@ -82,6 +83,7 @@ export function buildAuditBlock(a: BuildArgs): AuditBlock {
     row_count: a.rowCount,
     duration_ms: Math.max(0, Date.now() - a.startMs),
     server_time: new Date().toISOString(), // ISO-8601 UTC (ends with Z)
+    timezone: SESSION_TIME_ZONE, // matches the runner's SET LOCAL TIME ZONE
   };
   if (a.columnsMasked && a.columnsMasked.length) block.columns_masked = a.columnsMasked;
   if ((a.relations ?? []).length > MAX_RELATIONS) block.detail = { ...(a.detail ?? {}), relations_truncated: true };

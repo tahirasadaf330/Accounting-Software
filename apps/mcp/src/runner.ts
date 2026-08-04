@@ -14,7 +14,7 @@
 import type { PoolClient } from 'pg';
 import { Role } from '@accounting-saas/shared';
 import { roPool } from './db/pools.js';
-import { config } from './config.js';
+import { config, SESSION_TIME_ZONE } from './config.js';
 import { log } from './logging.js';
 import { verifyToken } from './auth/jwt.js';
 import { resolvePrincipal } from './auth/roleResolver.js';
@@ -138,6 +138,7 @@ export async function run(extra: Extra, tool: string, work: Work): Promise<ToolR
     client = await roPool.connect();
     await client.query('BEGIN');
     await client.query('SET TRANSACTION READ ONLY');
+    await client.query(`SET LOCAL TIME ZONE '${SESSION_TIME_ZONE}'`); // pin UTC — never inherit server default
     await client.query(`SET LOCAL statement_timeout = ${Number(config.statementTimeoutMs)}`);
     const ctx: ToolContext = {
       role: principal.role,
