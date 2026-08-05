@@ -49,10 +49,18 @@ const FRESHNESS: Record<string, { table: string; col: string }> = {
   reference: { table: 'exchange_rates', col: 'createdAt' },
 };
 
-export async function datasetFreshness(ctx: ToolContext, datasetName: string): Promise<string | null> {
+export async function datasetFreshness(
+  ctx: ToolContext,
+  datasetName: string,
+): Promise<{ lastRefresh: string | null; rows: number }> {
   const f = FRESHNESS[datasetName];
-  if (!f) return null;
-  const { rows } = await ctx.query(`SELECT max("${f.col}") AS m FROM ${f.table} WHERE "tenantId" = $1`, [ctx.tenantId]);
+  if (!f) return { lastRefresh: null, rows: 0 };
+  const { rows } = await ctx.query(
+    `SELECT max("${f.col}") AS m, count(*)::int AS n FROM ${f.table} WHERE "tenantId" = $1`,
+    [ctx.tenantId],
+  );
   const m = rows[0]?.m;
-  return m ? new Date(m).toISOString() : null;
+  // rows=0 explains a null lastRefresh (dataset empty for this tenant), so callers
+  // can tell "no data yet" apart from a broken refresh.
+  return { lastRefresh: m ? new Date(m).toISOString() : null, rows: Number(rows[0]?.n ?? 0) };
 }

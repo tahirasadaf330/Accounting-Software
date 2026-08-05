@@ -92,6 +92,9 @@ test('describe: OWNER → 6 datasets; audit in structuredContent', async (t) => 
   assert.ok(r.audit.subject.oid);
   assert.ok(r.audit.server_time.endsWith('Z'));
   assert.equal(r.audit.timezone, 'UTC');
+  assert.ok(Array.isArray(r.data.relationships) && r.data.relationships.length > 0); // (a) FK/join map
+  assert.equal(typeof r.data.datasets[0].rows_available, 'number'); // (b) freshness rows signal
+  assert.match(r.text, /datasets/); // (d) payload carried in content, not just structuredContent
 });
 
 test('describe: PAYMENT_OFFICER → 3 datasets', async (t) => {
