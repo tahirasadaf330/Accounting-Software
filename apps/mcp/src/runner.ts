@@ -90,7 +90,11 @@ export async function run(extra: Extra, tool: string, work: Work): Promise<ToolR
   const respond = async (data: unknown, text: string, a: FinalizeArgs): Promise<ToolResult> => {
     const audit = buildAuditBlock({ tool, kind, startMs: start, ...a });
     void writeLocalAudit(audit).catch((e) => log.warn(a.correlationId, 'local audit write failed (non-fatal)', e));
-    return { content: [{ type: 'text', text }], structuredContent: { data, audit }, isError: false };
+    // Spec: `content` should carry the same payload the model needs, not just a
+    // summary. On success we append the JSON; denials/errors keep the plain
+    // reason message (data is null) so the reason stays legible.
+    const contentText = data == null ? text : `${text}\n${JSON.stringify(data)}`;
+    return { content: [{ type: 'text', text: contentText }], structuredContent: { data, audit }, isError: false };
   };
   const deny = (reason: DenyReason, subject: AuditSubject, correlationId: string, detail?: Record<string, unknown>) =>
     respond(null, denialMessage(reason), {

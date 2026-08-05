@@ -70,15 +70,42 @@ export async function describe(ctx: ToolContext): Promise<WorkResult> {
         return true;
       });
     }
+    const fresh = await datasetFreshness(ctx, d.name);
     datasets.push({
       name: d.name,
       description: d.description,
       tables: d.tables,
       columns,
       masked_for_you: maskedForYou,
-      last_refresh: await datasetFreshness(ctx, d.name),
+      last_refresh: fresh.lastRefresh,
+      rows_available: fresh.rows, // 0 ⇒ dataset is empty for this tenant (a null last_refresh is expected, not a stale/broken job)
       refresh_schedule: 'live (transactional — reflects committed data at query time)',
     });
+  }
+
+  // Relationships (join/FK map) — read from real FK constraints so accounting_query
+  // knows how tables connect. Drift-proof; only shows edges where BOTH tables are in
+  // the caller's allow-list. Sourced from pg_catalog: the read-only role can't see
+  // information_schema.constraint_column_usage (that view only shows tables it OWNS).
+  const relationships: string[] = [];
+  if (allowedTables.length > 0) {
+    const allowSet = new Set(allowedTables);
+    const strip = (t: string) => t.replace(/^public\./, '').replace(/"/g, '');
+    const { rows: fks } = await ctx.query(
+      `SELECT con.conrelid::regclass::text  AS from_t, att.attname  AS from_c,
+              con.confrelid::regclass::text AS to_t,   att2.attname AS to_c
+         FROM pg_constraint con
+         JOIN pg_attribute att  ON att.attrelid  = con.conrelid  AND att.attnum  = ANY(con.conkey)
+         JOIN pg_attribute att2 ON att2.attrelid = con.confrelid AND att2.attnum = ANY(con.confkey)
+        WHERE con.contype = 'f' AND con.connamespace = 'public'::regnamespace
+          AND array_length(con.conkey, 1) = 1
+        ORDER BY 1, 2`,
+    );
+    for (const r of fks as Array<{ from_t: string; from_c: string; to_t: string; to_c: string }>) {
+      const from = strip(r.from_t);
+      const to = strip(r.to_t);
+      if (allowSet.has(from) && allowSet.has(to)) relationships.push(`${from}.${r.from_c} -> ${to}.${r.to_c}`);
+    }
   }
 
   return {
@@ -95,6 +122,7 @@ export async function describe(ctx: ToolContext): Promise<WorkResult> {
       },
       glossary: GLOSSARY,
       reading_notes: READING_NOTES,
+      relationships,
       datasets,
     },
   };
