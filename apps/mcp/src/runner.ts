@@ -119,15 +119,6 @@ export async function run(extra: Extra, tool: string, work: Work): Promise<ToolR
   // 2/3. Resolve to a local user + role.
   const resolved = await resolvePrincipal(claims, correlationId);
   if (!resolved.ok) {
-    // TEMP DEBUG (identity linking): log the exact oid/email Atlas sent on a
-    // no_account/ambiguous denial so we can align users.azureOid. Remove after diagnosis.
-    log.warn(correlationId, 'identity NOT resolved — raw token claims', {
-      reason: resolved.reason,
-      oid: claims.oid,
-      email: claims.email ?? null,
-      email_present: !!claims.email,
-      name: claims.name ?? null,
-    });
     return deny(resolved.reason, { oid: claims.oid, email: claims.email, matched_by: null }, correlationId);
   }
   const principal = resolved.principal;
