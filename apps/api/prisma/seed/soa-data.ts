@@ -2724,7 +2724,13 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": [],
+    "payments": [
+      {
+        "date": "2026-07-30",
+        "invoices": "",
+        "amount": 22542.3
+      }
+    ],
     "adjustments": []
   },
   {
@@ -2857,7 +2863,13 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": [],
+    "payments": [
+      {
+        "date": "2026-07-30",
+        "invoices": "",
+        "amount": 3720.24
+      }
+    ],
     "adjustments": []
   },
   {
@@ -3060,7 +3072,13 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": [],
+    "payments": [
+      {
+        "date": "2026-07-02",
+        "invoices": "",
+        "amount": 1402.75
+      }
+    ],
     "adjustments": []
   },
   {
@@ -3122,7 +3140,13 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": [],
+    "payments": [
+      {
+        "date": "2026-07-30",
+        "invoices": "",
+        "amount": 2246.96
+      }
+    ],
     "adjustments": []
   },
   {
@@ -3204,7 +3228,13 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": [],
+    "payments": [
+      {
+        "date": "2026-04-19",
+        "invoices": "",
+        "amount": 2050.21
+      }
+    ],
     "adjustments": []
   },
   {
@@ -3448,7 +3478,13 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": [],
+    "payments": [
+      {
+        "date": "2026-07-30",
+        "invoices": "",
+        "amount": 9412.19
+      }
+    ],
     "adjustments": []
   },
   {
@@ -3629,7 +3665,13 @@ export const SOA_CONTACTS: SoaContact[] = [
       }
     ],
     "receipts": [],
-    "payments": [],
+    "payments": [
+      {
+        "date": "2026-01-19",
+        "invoices": "",
+        "amount": 6514.71
+      }
+    ],
     "adjustments": []
   },
   {
