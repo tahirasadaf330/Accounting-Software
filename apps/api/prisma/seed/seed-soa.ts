@@ -23,8 +23,13 @@ async function resolveContext(): Promise<Ctx> {
   const tenant = await prisma.tenant.findUnique({ where: { slug: 'hayo' } });
   if (!tenant) throw new Error('Hayo tenant not found — run main seeder first');
 
-  const ceoUser = await prisma.user.findUnique({ where: { email: 'ceo@hayo.net' } });
-  if (!ceoUser) throw new Error('ceo@hayo.net not found — run main seeder first');
+  // Voucher creator/approver. Local/staging seed a "ceo@hayo.net" user; production
+  // uses real emails, so fall back to any OWNER of the tenant when it's absent.
+  let ceoUser = await prisma.user.findUnique({ where: { email: 'ceo@hayo.net' } });
+  if (!ceoUser) {
+    ceoUser = await prisma.user.findFirst({ where: { tenantId: tenant.id, role: 'OWNER' } });
+  }
+  if (!ceoUser) throw new Error('No creator user found (ceo@hayo.net or a tenant OWNER) — run main seeder first');
 
   const revenue = await prisma.account.findUnique({ where: { tenantId_code: { tenantId: tenant.id, code: '4000' } } });
   const cogs = await prisma.account.findUnique({ where: { tenantId_code: { tenantId: tenant.id, code: '5000' } } });
