@@ -98,9 +98,13 @@ async function ensureTradeAccount(ctx: Ctx, c: SoaContact) {
 
 // Generic invoice voucher (SALES or PURCHASE) with balanced JE.
 async function createInvoice(
-  ctx: Ctx, c: SoaContact, tradeAccountId: string, inv: SoaInvoice, type: 'SALES' | 'PURCHASE',
+  ctx: Ctx, c: SoaContact, tradeAccountId: string, inv: SoaInvoice, type: 'SALES' | 'PURCHASE', occ = 1,
 ) {
-  const voucherId = deterministicUuid(`soa-${c.key}-${type.toLowerCase()}-${inv.num}`);
+  // Disambiguate repeated invoice numbers (e.g. placeholder "Exp" used on
+  // multiple lines): the 2nd+ occurrence gets a suffix so it isn't collapsed
+  // into the first. Occurrence 1 keeps the original ID (idempotent re-runs).
+  const dupSuffix = occ > 1 ? `#${occ}` : '';
+  const voucherId = deterministicUuid(`soa-${c.key}-${type.toLowerCase()}-${inv.num}${dupSuffix}`);
   if (await prisma.voucher.findUnique({ where: { id: voucherId } })) return 'skip';
 
   const voucherDate = d(inv.end);
@@ -314,8 +318,16 @@ async function seedContact(ctx: Ctx, c: SoaContact) {
   let created = 0, skipped = 0;
   const tally = (r: string) => { r === 'created' ? created++ : skipped++; };
 
-  for (const inv of c.sales) tally(await createInvoice(ctx, c, trade.id, inv, 'SALES'));
-  for (const inv of c.purchases) tally(await createInvoice(ctx, c, trade.id, inv, 'PURCHASE'));
+  const salesOcc = new Map<string, number>();
+  for (const inv of c.sales) {
+    const n = (salesOcc.get(inv.num) || 0) + 1; salesOcc.set(inv.num, n);
+    tally(await createInvoice(ctx, c, trade.id, inv, 'SALES', n));
+  }
+  const purOcc = new Map<string, number>();
+  for (const inv of c.purchases) {
+    const n = (purOcc.get(inv.num) || 0) + 1; purOcc.set(inv.num, n);
+    tally(await createInvoice(ctx, c, trade.id, inv, 'PURCHASE', n));
+  }
   for (let i = 0; i < c.receipts.length; i++) tally(await createPayment(ctx, c, trade.id, c.receipts[i], i, 'RECEIPT'));
   for (let i = 0; i < c.payments.length; i++) tally(await createPayment(ctx, c, trade.id, c.payments[i], i, 'PAYMENT'));
   for (let i = 0; i < c.adjustments.length; i++) tally(await createAdjustment(ctx, c, trade.id, c.adjustments[i], i));
